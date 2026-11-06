@@ -1,0 +1,7 @@
+# 运行所需（macOS 12+，Python 3.11+）
+numpy==2.5.4
+pillow==13.0.0
+pymupdf==2.1
+pyobjc-framework-Quartz==13.0
+pyobjc-framework-Vision==13.0
+pywebview==6.2.1

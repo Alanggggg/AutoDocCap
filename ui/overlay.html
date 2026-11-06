@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+html,body{margin:0;height:100%;background:transparent;overflow:hidden;cursor:default}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#fff;-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none}
+/* 截图区域保持原样，其余部分用超大阴影压暗 */
+.hole{position:absolute;box-shadow:0 0 0 100vmax rgba(0,0,0,.62);border-radius:2px}
+/* 高亮框画在区域外侧，不压到要截的内容上；遮罩在截第一张图前就会隐藏 */
+.ring{position:absolute;border:3px solid #FFB340;border-radius:6px;animation:blink 1s ease-in-out infinite}
+.msg{position:absolute;text-align:center;transform:translate(-50%,-50%);animation:blink 1s ease-in-out infinite;
+  text-shadow:0 2px 12px rgba(0,0,0,.6);white-space:nowrap}
+.msg.inside{background:rgba(0,0,0,.72);padding:18px 32px;border-radius:16px}
+.num{font-size:120px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
+.t1{font-size:28px;font-weight:600;margin-top:14px}
+.t2{font-size:18px;color:#FFD27A;margin-top:8px}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</head>
+<body>
+<div class="hole" id="hole"></div>
+<div class="ring" id="ring"></div>
+<div class="msg" id="msg">
+  <div class="num" id="num">5</div>
+  <div class="t1">请点击高亮框内的文档正文，并滚到最顶部</div>
+  <div class="t2">倒计时结束后自动开始，期间请勿触碰鼠标</div>
+</div>
+<script>
+// r：截图区域在本窗口内的坐标 [x, y, w, h]
+window.setup = (r, n) => {
+  const [x, y, w, h] = r, W = innerWidth, H = innerHeight;
+  Object.assign(document.getElementById("hole").style, {left: x + "px", top: y + "px", width: w + "px", height: h + "px"});
+  Object.assign(document.getElementById("ring").style, {left: x - 7 + "px", top: y - 7 + "px", width: w + 8 + "px", height: h + 8 + "px"});
+  // 提示文字放在区域外最大的那块暗区；都放不下就叠在区域中间（遮罩会在截图前消失，不影响截图）
+  const areas = [
+    {cx: W / 2, cy: y / 2, fit: y > 300},
+    {cx: W / 2, cy: (y + h + H) / 2, fit: H - y - h > 300},
+    {cx: x / 2, cy: H / 2, fit: x > 720},
+    {cx: (x + w + W) / 2, cy: H / 2, fit: W - x - w > 720},
+  ].map((a, i) => ({...a, size: [y, H - y - h, x * 0.4, (W - x - w) * 0.4][i]}));
+  const best = areas.filter(a => a.fit).sort((a, b) => b.size - a.size)[0];
+  const m = document.getElementById("msg");
+  m.classList.toggle("inside", !best);
+  Object.assign(m.style, best ? {left: best.cx + "px", top: best.cy + "px"} : {left: x + w / 2 + "px", top: y + h / 2 + "px"});
+  window.tick(n);
+};
+window.tick = n => { document.getElementById("num").textContent = n; };
+</script>
+</body>
+</html>

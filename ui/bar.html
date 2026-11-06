@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+html,body{margin:0;height:100%;background:transparent;overflow:hidden}
+body{font:13px/1.4 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;color:#F5F5F7;-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none}
+.bar{position:absolute;inset:4px;border-radius:14px;background:rgba(28,28,30,.92);border:1px solid rgba(255,255,255,.1);
+  display:flex;align-items:center;gap:12px;padding:0 12px 0 16px;box-shadow:0 4px 18px rgba(0,0,0,.35)}
+.dot{width:10px;height:10px;border-radius:50%;background:#FF9F0A;flex:none}
+.dot.run{background:#FF453A;animation:pulse 1.2s ease-in-out infinite}
+.dot.done{background:#30D158}
+@keyframes pulse{50%{opacity:.35}}
+.txt{flex:1;min-width:0}
+.main{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sub{color:#A1A1A6;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.sub .w{color:#FFB340}
+button{font:inherit;font-weight:600;color:#fff;background:#3A3A3C;border:0;border-radius:8px;padding:7px 14px;cursor:pointer}
+button:hover{background:#FF453A}
+</style>
+</head>
+<body>
+<div class="bar">
+  <span class="dot" id="dot"></span>
+  <div class="txt">
+    <div class="main" id="main">准备开始</div>
+    <div class="sub" id="sub">请点击远程窗口里的文档正文，并滚到最顶部</div>
+  </div>
+  <button id="stop">停止</button>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+let n = 0, sus = 0, lat = null, note = "";
+function sub() {
+  const parts = [`第 ${n} 帧`];
+  if (lat != null) parts.push(`响应 ${lat.toFixed(1)} 秒`);
+  if (sus) parts.push(`<span class="w">可疑 ${sus} 处</span>`);
+  $("#sub").innerHTML = parts.join(" · ") + (note ? ` · ${note}` : "");
+}
+window.reset = () => {
+  n = sus = 0; lat = null; note = "";
+  $("#dot").className = "dot"; $("#main").textContent = "准备开始";
+  $("#sub").textContent = "请点击远程窗口里的文档正文，并滚到最顶部";
+};
+window.notice = (main, text) => {
+  $("#dot").className = "dot"; $("#main").textContent = main; $("#sub").textContent = text;
+};
+window.onEngine = ev => {
+  switch (ev.type) {
+    case "countdown":
+      $("#main").textContent = `${ev.n} 秒后开始`;
+      $("#sub").textContent = "请点击远程窗口里的文档正文，并滚到最顶部"; break;
+    case "started":
+      $("#dot").className = "dot run"; $("#main").textContent = "截图中 · 请勿触碰鼠标";
+      $("#sub").textContent = "正在标定滚动距离…"; break;
+    case "calibrated": $("#sub").textContent = `标定完成：每次滚 ${ev.ticks} 格`; break;
+    case "frame":
+      n = ev.n; sus = ev.n_suspicious; if (ev.latency != null) lat = ev.latency; note = ""; sub(); break;
+    case "lag": note = "远程响应慢，正在等待"; sub(); break;
+    case "info":
+      if (ev.msg.includes("停止") || ev.msg.includes("末尾")) {
+        $("#dot").className = "dot done"; $("#main").textContent = ev.msg.trim();
+      } break;
+  }
+};
+$("#stop").onclick = () => window.pywebview.api.stop_capture();
+</script>
+</body>
+</html>

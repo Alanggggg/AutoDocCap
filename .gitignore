@@ -1,0 +1,21 @@
+# Python / 虚拟环境
+.venv/
+__pycache__/
+*.pyc
+
+# 打包产物
+build/
+dist/
+
+# 截图结果与本机数据——可能含保密文档，绝不提交
+output/
+test_doc/
+region.json
+region_preview.png
+*.pdf
+
+# macOS
+.DS_Store
+
+# 本机检查用的临时文件
+.check/
