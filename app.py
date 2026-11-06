@@ -38,6 +38,7 @@ PRESETS = {
 }
 DEFAULTS = {"preset": "normal", "delay": 0.6, "lag_wait": 2.0, "poll": 0.3, "settle_timeout": 6.0,
             "step": 0.6, "page_ratio": 1.414, "max_frames": 3000, "countdown": 5, "ocr": True,
+            "compact": True, "pdf_limit_mb": 48,
             "region": None}
 BAR_W, BAR_H = 420, 78
 
@@ -77,7 +78,8 @@ def make_opt(s, **over):
     o = {"delay": s["delay"], "lag_wait": s["lag_wait"], "poll": s["poll"],
          "settle_timeout": s["settle_timeout"], "step": s["step"], "countdown": int(s["countdown"]),
          "max_frames": int(s["max_frames"]), "match_thr": 12.0, "page_ratio": s["page_ratio"],
-         "no_ocr": not s["ocr"], "restitch": False}
+         "no_ocr": not s["ocr"], "restitch": False,
+         "compact": bool(s.get("compact", True)), "pdf_limit_mb": float(s.get("pdf_limit_mb", 48))}
     o.update(over)
     return Namespace(**o)
 
@@ -452,10 +454,10 @@ def selftest():
         img.save(page)
         texts = doccap.ocr_pages([page], lambda *a, **k: None)
         pdf = Path(td) / "t.pdf"
-        doccap.make_pdf([page], texts, 2.0, pdf)
+        rep = doccap.compact_pdf([page], texts, 2.0, pdf, 48, lambda *a, **k: None)
         got = " ".join(t for t, _ in texts[0])
-        ok = "SELFTEST" in got and pdf.stat().st_size > 0
-        print(f"OCR 结果：{got!r}；PDF {pdf.stat().st_size} 字节；{'自检通过' if ok else '自检失败'}")
+        ok = "SELFTEST" in got and pdf.stat().st_size > 0 and not rep["over"]
+        print(f"OCR 结果：{got!r}；压缩 PDF {pdf.stat().st_size} 字节；{'自检通过' if ok else '自检失败'}")
         return 0 if ok else 1
 
 

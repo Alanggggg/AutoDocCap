@@ -190,6 +190,10 @@ details.adv[open] summary::before{transform:rotate(90deg)}
         <h2 style="margin-top:18px">输出</h2>
         <div class="switch"><span>生成可搜索的文字（OCR）<br><span class="hint" style="margin:0">PDF 可搜索、可复制，另存一份 txt；关掉更快</span></span>
           <label class="toggle"><input type="checkbox" id="ocr"><span></span></label></div>
+        <div class="switch"><span>压缩为黑白 PDF<br><span class="hint" style="margin:0">体积约为原图的 1/10，小字保持原分辨率；用于上传有大小限制的系统</span></span>
+          <label class="toggle"><input type="checkbox" id="compact"><span></span></label></div>
+        <div class="switch" id="limit-row"><span>PDF 大小上限</span>
+          <span class="row" style="gap:6px"><input type="number" id="limit" min="1" max="2000" step="1" style="width:90px"> MB</span></div>
         <div class="switch"><span>分页大小</span>
           <select id="ratio" style="width:150px"><option value="1.414">A4（标准）</option><option value="1.0">短页</option><option value="2.0">长页</option></select></div>
 
@@ -346,6 +350,8 @@ $("#reset-adv").onclick = () => {
   renderAdv(); renderPreset(); persist();
 };
 $("#ocr").onchange = e => { S.ocr = e.target.checked; persist(); };
+$("#compact").onchange = e => { S.compact = e.target.checked; $("#limit-row").hidden = !S.compact; persist(); };
+$("#limit").onchange = e => { const v = parseFloat(e.target.value); S.pdf_limit_mb = isNaN(v) ? 48 : Math.min(Math.max(v, 1), 2000); e.target.value = S.pdf_limit_mb; persist(); };
 $("#ratio").onchange = e => { S.page_ratio = +e.target.value; persist(); };
 $$("[data-perm]").forEach(b => b.onclick = async () => { perms = await api.request_permission(b.dataset.perm); renderPerms(); $("#perm-hint").hidden = false; });
 $("#perm-recheck").onclick = async () => { perms = await api.permissions(); renderPerms(); };
@@ -408,8 +414,14 @@ function renderReview() {
   const r = result, t = r.timing;
   $("#r-name").textContent = r.name;
   $("#r-stats").innerHTML = [`<b>${r.pages.length}</b> 页`, `<b>${r.frames}</b> 帧`,
+    r.pdf_mb != null ? `PDF <b>${r.pdf_mb}</b> MB` : null,
     t ? `远程平均响应 <b>${t.mean.toFixed(1)}</b> 秒` : null, REASON[r.reason] || null].filter(Boolean).join(" · ");
   const bs = [];
+  const c = r.compress;
+  if (c && c.over) bs.push(`<div class="banner bad"><span class="grow">PDF 有 ${c.size_mb} MB，超过 ${c.limit_mb} MB 上限：已压到能保证文字清晰的最低限度。可以分两次截图（每次截一半文档）。</span></div>`);
+  else if (c && (c.scaled_pages.length || c.gray_pages.length)) bs.push(`<div class="banner info"><span class="grow">` +
+    [c.scaled_pages.length ? `为装进 ${c.limit_mb} MB，${c.scaled_pages.length} 页字较大的页面降低了分辨率（已验证文字仍清晰）` : "",
+     c.gray_pages.length ? `第 ${c.gray_pages.join("、")} 页含图片或特殊配色，转黑白会看不清，保留为灰度` : ""].filter(Boolean).join("；") + `。</span></div>`);
   if (r.reason === "moved" || r.reason === "stopped")
     bs.push(`<div class="banner warn"><span class="grow">截图在中途停止，文档可能没有截全。</span></div>`);
   if (r.seams.length) {
@@ -492,6 +504,7 @@ window.addEventListener("pywebviewready", async () => {
   S = init.settings; PRESETS = init.presets; perms = init.perms; S.default_name = init.default_name;
   $("#name").value = init.default_name; $("#out-root").textContent = init.out_root.replace(/^\/Users\/[^/]+/, "~");
   $("#ocr").checked = S.ocr; $("#ratio").value = String(S.page_ratio);
+  $("#compact").checked = S.compact !== false; $("#limit").value = S.pdf_limit_mb ?? 48; $("#limit-row").hidden = !$("#compact").checked;
   renderPerms(); renderPreset(); renderAdv(); renderRegion(init.preview);
   if (init.opened) { result = init.opened; renderReview(); }
 });

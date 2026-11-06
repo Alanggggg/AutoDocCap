@@ -13,6 +13,7 @@
 """
 
 import argparse
+import io
 import json
 import subprocess
 import sys
@@ -649,10 +650,19 @@ def build(out, opt, on_event=print_event):
         emit("seams", "⚠ 以下页面有可疑拼接，请人工核对是否有重复或缺失的行："
              + "、".join(f"第 {s['page']} 页" for s in seams), seams=seams)
 
-    texts = ocr_pages(pages, emit) if not opt.no_ocr else [[] for _ in pages]
-    emit("stage", "正在生成 PDF…", stage="pdf")
+    compact = getattr(opt, "compact", True)
+    # 压缩要靠 OCR 判断字的大小、验收清晰度，所以压缩时即使关了"可搜索文字"也要识别，只是不写进 PDF
+    texts = ocr_pages(pages, emit) if (compact or not opt.no_ocr) else [[] for _ in pages]
+    layer = texts if not opt.no_ocr else [[] for _ in pages]
     pdf = out / f"{out.name}.pdf"
-    make_pdf(pages, texts, meta.get("scale", 2.0), pdf)
+    compress = None
+    if compact:
+        emit("stage", "正在压缩 PDF…", stage="compress")
+        compress = compact_pdf(pages, texts, meta.get("scale", 2.0), pdf, getattr(opt, "pdf_limit_mb", 48), emit,
+                               layer=layer)
+    else:
+        emit("stage", "正在生成 PDF…", stage="pdf")
+        make_pdf(pages, layer, meta.get("scale", 2.0), pdf)
     txt = None
     if not opt.no_ocr:
         txt = out / f"{out.name}.txt"
@@ -662,7 +672,8 @@ def build(out, opt, on_event=print_event):
         emit("info", f"文字版：{txt}")
     emit("info", f"PDF：{pdf}")
     return {"pages": [str(p) for p in pages], "heights": pag.heights, "width": W,
-            "seams": seams, "pdf": str(pdf), "txt": str(txt) if txt else None}
+            "seams": seams, "pdf": str(pdf), "txt": str(txt) if txt else None,
+            "pdf_mb": round(pdf.stat().st_size / 1024 / 1024, 2), "compress": compress}
 
 
 def restitch(frames, old, emit):
@@ -731,16 +742,21 @@ def ocr_pages(paths, emit):
     return results
 
 
-def make_pdf(pages, texts, scale, pdf_path):
+def make_pdf(pages, texts, scale, pdf_path, images=None):
+    """images 为每页实际嵌入的图片字节（压缩后的）；为 None 时直接嵌入原图。
+    页面尺寸和文字层始终按原图计算，所以嵌入图缩小了也不影响版面和搜索定位。"""
     import pymupdf
 
     doc = pymupdf.open()
     font = pymupdf.Font("china-s")
-    for p, items in zip(pages, texts):
+    for i, (p, items) in enumerate(zip(pages, texts)):
         w, h = Image.open(p).size
         pw, ph = w / scale, h / scale
         page = doc.new_page(width=pw, height=ph)
-        page.insert_image(page.rect, filename=str(p))
+        if images is None:
+            page.insert_image(page.rect, filename=str(p))
+        else:
+            page.insert_image(page.rect, stream=images[i])
         for text, (x, y, bw, bh) in items:
             fs = bh * ph * 0.9
             tl = font.text_length(text, fontsize=fs)
@@ -752,6 +768,139 @@ def make_pdf(pages, texts, scale, pdf_path):
                              morph=(origin, pymupdf.Matrix(bw * pw / tl, 1)))
     doc.save(pdf_path, garbage=3, deflate=True)
     doc.close()
+    return Path(pdf_path).stat().st_size
+
+
+# ---------------------------------------------------------------- PDF 压缩
+
+def _box_mean(a, r):
+    c = np.pad(a, ((r + 1, r), (r + 1, r)), mode="edge").cumsum(0).cumsum(1)
+    return (c[2 * r + 1:, 2 * r + 1:] - c[:-2 * r - 1, 2 * r + 1:]
+            - c[2 * r + 1:, :-2 * r - 1] + c[:-2 * r - 1, :-2 * r - 1]) / (2 * r + 1) ** 2
+
+
+def binarize(g, r=24, gap=45):
+    """转 1 位黑白。按局部背景亮度定阈值：浅色背景上比背景暗一截的算字，深色背景上比背景亮
+    一截的算字——灰色表头、浅色填色框会变白而字保留，深色底白字也能保住。返回 True=白。
+    （实测常见的 Sauvola 自适应阈值会毁掉深色底白字，固定阈值会让中灰底纹整块变黑。）"""
+    bg = _box_mean(g, r)
+    return np.where(bg >= 110, g >= bg - gap, g > bg + gap)
+
+
+def _is_photo(g):
+    """页面里有大面积"有纹理的中间调"（嵌入的截图、照片），黑白化会把它弄花。"""
+    t = 16
+    h, w = g.shape[0] // t * t, g.shape[1] // t * t
+    tiles = g[:h, :w].reshape(h // t, t, w // t, t)
+    mean, std = tiles.mean(axis=(1, 3)), tiles.std(axis=(1, 3))
+    textured = (mean > 50) & (mean < 205) & (std > 14)
+    return textured.mean() > 0.12
+
+
+def _encode(g, s, kind):
+    """g：原图灰度数组；s：缩放比例；kind：bw（1 位黑白 PNG）或 gray（灰度 JPEG）。"""
+    im = Image.fromarray(g.astype(np.uint8))
+    if s < 1:
+        im = im.resize((max(1, round(im.width * s)), max(1, round(im.height * s))), Image.LANCZOS)
+    buf = io.BytesIO()
+    if kind == "bw":
+        Image.fromarray(binarize(np.asarray(im, dtype=np.float32))).convert("1").save(buf, "PNG", optimize=True)
+    else:
+        im.save(buf, "JPEG", quality=60)
+    return buf.getvalue()
+
+
+def _recall(ref, got):
+    """原图认出的字，压缩后还能认出多少（0~1）。
+    只数汉字、字母、数字，不看顺序：OCR 对空格、下划线、点号时有时无，对图里零散标签的
+    输出顺序也不固定（同一张原图两次识别都可能不同），按序比对会把清晰的页误判为不合格。"""
+    from collections import Counter
+    a = Counter(c for c in ref if c.isalnum())
+    b = Counter(c for c in got if c.isalnum())
+    return sum((a & b).values()) / max(1, sum(a.values()))
+
+
+def _ocr_bytes(data, emit):
+    with tempfile.NamedTemporaryFile(suffix=".img") as f:
+        f.write(data)
+        f.flush()
+        return "".join(t for t, _ in ocr_pages([Path(f.name)], lambda *a, **k: None)[0])
+
+
+def compact_pdf(pages, texts, scale, pdf_path, limit_mb, emit, layer=None):
+    """把 PDF 压到 limit_mb 以内，并尽量小：
+
+    1. 每页默认转成原分辨率的 1 位黑白图（实测每页约 45KB，只有灰度 PNG 的 1/10），小字不受影响；
+    2. 照片类页面用灰度 JPEG；
+    3. 验收：对压缩后的页面再做一次 OCR，认出的字比原图明显少的页改用灰度 JPEG；
+    4. 总大小仍超过上限时，按每页最小字高，把大字页逐档降低分辨率（降过的页同样验收）。
+    texts 用于分析；layer 是实际写进 PDF 的文字层（关闭"可搜索文字"时为空）。返回压缩报告。
+    """
+    layer = texts if layer is None else layer
+    limit = limit_mb * 1024 * 1024
+    n = len(pages)
+    gray_of = lambda i: np.asarray(Image.open(pages[i]).convert("L"), dtype=np.float32)
+    ref = ["".join(t for t, _ in items) for items in texts]
+    # 每页最小字高（原图像素）：只看至少两个字的行，排除识别噪声
+    hmin = []
+    for p, items in zip(pages, texts):
+        H = Image.open(p).size[1]
+        hs = [bh * H for t, (_, _, _, bh) in items if len(t.strip()) >= 2 and bh * H >= 6]
+        hmin.append(min(hs) if hs else None)
+
+    kind, scl, cache = [], [1.0] * n, {}
+    for i in range(n):
+        emit("compress", n=i + 1, total=n)
+        g = gray_of(i)
+        kind.append("gray" if _is_photo(g) else "bw")
+        cache[(i, 1.0)] = _encode(g, 1.0, kind[i])
+
+    def verified(i, s):
+        """压缩后的页面 OCR 结果与原图足够接近。字很少的页不验（比例不可靠）。"""
+        if len(ref[i]) < 20:
+            return True
+        return _recall(ref[i], _ocr_bytes(cache[(i, s)], emit)) >= 0.93
+
+    fallback = []
+    if any(ref):
+        for i in range(n):
+            emit("verify", n=i + 1, total=n)
+            if kind[i] == "bw" and not verified(i, 1.0):
+                kind[i] = "gray"
+                cache[(i, 1.0)] = _encode(gray_of(i), 1.0, "gray")
+                fallback.append(i + 1)
+
+    size = make_pdf(pages, layer, scale, pdf_path, [cache[(i, 1.0)] for i in range(n)])
+    floor = None
+    # 超限：要求的最小字高逐档降低，只缩字大的页；1 位黑白比灰度更需要像素，所以起点较高
+    for target in (24, 20, 17, 14):
+        if size <= limit:
+            break
+        floor = target
+        for i in range(n):
+            if hmin[i] is None or kind[i] != "bw":
+                continue
+            s = round(min(1.0, max(0.35, target / hmin[i])), 2)
+            if s >= scl[i]:
+                continue
+            if (i, s) not in cache:
+                cache[(i, s)] = _encode(gray_of(i), s, "bw")
+            if verified(i, s):
+                scl[i] = s
+        size = make_pdf(pages, layer, scale, pdf_path, [cache[(i, scl[i])] for i in range(n)])
+
+    report = {"size_mb": round(size / 1024 / 1024, 2), "limit_mb": limit_mb, "over": size > limit,
+              "gray_pages": [i + 1 for i in range(n) if kind[i] == "gray"],
+              "scaled_pages": [i + 1 for i in range(n) if scl[i] < 1], "min_text_px": floor,
+              "verify_fallback": fallback}
+    msg = f"PDF {report['size_mb']} MB（上限 {limit_mb} MB）：黑白压缩，"
+    msg += (f"{len(report['scaled_pages'])} 页大字页降低了分辨率" if report["scaled_pages"] else "全部保持原分辨率")
+    if report["gray_pages"]:
+        msg += f"；第 {'、'.join(map(str, report['gray_pages']))} 页含图片或特殊配色，保留灰度"
+    emit("compressed", msg, report=report)
+    if report["over"]:
+        emit("warn", f"⚠ 已压到可读性底线，PDF 仍有 {report['size_mb']} MB，超过 {limit_mb} MB 上限。")
+    return report
 
 
 # ---------------------------------------------------------------- 入口
@@ -766,7 +915,9 @@ def main():
 
     def build_opts(p):
         p.add_argument("--page-ratio", type=float, default=1.414, help="页高/页宽，默认 A4")
-        p.add_argument("--no-ocr", action="store_true", help="跳过 OCR，只出图片 PDF")
+        p.add_argument("--no-ocr", action="store_true", help="PDF 不带可搜索文字层")
+        p.add_argument("--no-compact", dest="compact", action="store_false", help="不压缩，PDF 嵌入彩色原图")
+        p.add_argument("--pdf-limit", dest="pdf_limit_mb", type=float, default=48, help="压缩后 PDF 的大小上限（MB）")
 
     p = sub.add_parser("capture", help="自动滚动截图并生成 PDF")
     p.add_argument("name", help="文档名，输出到 output/<name>/")

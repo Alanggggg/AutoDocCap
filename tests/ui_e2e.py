@@ -33,7 +33,7 @@ def grab_checked(r):
 doccap.grab = grab_checked
 done = threading.Event()
 orig = api._finish
-def fin(r): orig(r); print("RESULT:", {k: r.get(k) for k in ("name", "frames", "reason", "error")}, "pages", len(r.get("pages") or []), flush=True); done.set()
+def fin(r): orig(r); print("RESULT:", {k: r.get(k) for k in ("name", "frames", "reason", "error", "pdf_mb")}, "pages", len(r.get("pages") or []), flush=True); done.set()
 api._finish = fin
 
 def shot(title, name):

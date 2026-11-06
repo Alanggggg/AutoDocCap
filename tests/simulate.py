@@ -90,7 +90,7 @@ doccap.time = types.SimpleNamespace(sleep=advance, time=lambda: state["now"])
 name = opt.out or ("_sim_noise" if opt.noise else "_sim")
 shutil.rmtree(doccap.OUT_ROOT / name, ignore_errors=True)
 args = argparse.Namespace(name=name, delay=0.6, lag_wait=2.0, step=0.6, countdown=0, max_frames=3000,
-                          match_thr=12.0, page_ratio=1.414, no_ocr=True)
+                          match_thr=12.0, page_ratio=1.414, no_ocr=True, compact=False)
 out = doccap.OUT_ROOT / name
 doccap.capture(region, out, args)  # 直接调用引擎，不依赖 region.json
 doccap.build(out, args)
