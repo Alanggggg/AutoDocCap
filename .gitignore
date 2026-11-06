@@ -19,3 +19,6 @@ region_preview.png
 
 # 本机检查用的临时文件
 .check/
+
+# 给 AI agent 的交接文档（仅本机）
+HANDOFF.md
