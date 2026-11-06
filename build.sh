@@ -13,6 +13,6 @@ esac
 rm -rf build dist
 "$PY" -m PyInstaller --noconfirm --clean doccap.spec
 # ditto 打包能保留 .app 内的符号链接和签名；用普通 zip 可能导致下载后提示"已损坏"
-ZIP="dist/需求文档截图工具-v${DOCCAP_VERSION}-${ARCH}.zip"
-ditto -c -k --keepParent "dist/需求文档截图工具.app" "$ZIP"
+ZIP="dist/AutoDocCap-v${DOCCAP_VERSION}-${ARCH}.zip"
+ditto -c -k --keepParent "dist/AutoDocCap.app" "$ZIP"
 echo "完成：$ZIP"

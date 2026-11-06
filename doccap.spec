@@ -1,4 +1,4 @@
-# PyInstaller 打包配置：生成「需求文档截图工具.app」。用 ./build.sh 调用，不要直接运行。
+# PyInstaller 打包配置：生成「AutoDocCap.app」。用 ./build.sh 调用，不要直接运行。
 import os
 
 VERSION = os.environ.get("DOCCAP_VERSION", "0.1.0")
@@ -16,11 +16,11 @@ exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="doccap", console=Fals
 coll = COLLECT(exe, a.binaries, a.datas, name="doccap")
 app = BUNDLE(
     coll,
-    name="需求文档截图工具.app",
+    name="AutoDocCap.app",
     bundle_identifier="io.github.doccap",
     version=VERSION,
     info_plist={
-        "CFBundleDisplayName": "需求文档截图工具",
+        "CFBundleDisplayName": "AutoDocCap",
         "CFBundleShortVersionString": VERSION,
         "CFBundleVersion": VERSION,
         "LSMinimumSystemVersion": "12.0",

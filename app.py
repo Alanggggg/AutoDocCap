@@ -1,4 +1,4 @@
-"""需求文档截图工具 —— 图形界面版。
+"""AutoDocCap —— 图形界面版。
 
 截图、拼接、OCR 都在 doccap.py（引擎）里，这里只负责窗口和交互：
 主窗口（ui/index.html）负责准备与复核；截图期间主窗口隐藏，只在屏幕角落显示悬浮条（ui/bar.html）。
@@ -23,9 +23,10 @@ from PIL import Image
 
 import doccap
 
-APP = "需求文档截图工具"
+APP = "AutoDocCap"
 BASE = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-SUPPORT = Path.home() / "Library/Application Support" / APP
+# 品牌改名不迁移本机数据，保留旧设置、选区与历史输出。
+SUPPORT = Path.home() / "Library/Application Support" / "需求文档截图工具"
 SETTINGS = SUPPORT / "settings.json"
 PREVIEW = SUPPORT / "region_preview.png"
 # 不放在桌面或文稿：这两个文件夹可能开着 iCloud 同步，截下来的文档会被传到云上

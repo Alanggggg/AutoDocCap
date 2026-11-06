@@ -31,9 +31,9 @@ jobs:
           [[ "$GITHUB_REF_TYPE" == "tag" ]] || VERSION="0.0.0-dev"
           PYTHON=python ./build.sh "$VERSION"
       - name: 自检（真实跑一次 OCR 和 PDF 生成）
-        run: dist/需求文档截图工具.app/Contents/MacOS/doccap --selftest
+        run: dist/AutoDocCap.app/Contents/MacOS/doccap --selftest
       - name: 检查架构
-        run: file dist/需求文档截图工具.app/Contents/MacOS/doccap
+        run: file dist/AutoDocCap.app/Contents/MacOS/doccap
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.arch }}
