@@ -127,12 +127,24 @@ details.adv[open] summary::before{transform:rotate(90deg)}
 .sum .title{font-size:16px;font-weight:600}
 .sum .stat{color:var(--muted);font-size:12px}
 .sum .stat b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
-.banners{padding:0 28px}
-.banner{display:flex;align-items:center;gap:10px;margin-top:12px;padding:10px 14px;border-radius:9px;font-size:13px}
-.banner.warn{background:var(--warn-weak);color:var(--warn)}
-.banner.info{background:var(--accent-weak);color:var(--accent)}
-.banner.bad{background:var(--bad-weak);color:var(--bad)}
-.banner .grow{flex:1}
+.notice-wrap{position:relative;flex:none;padding:8px 28px 0}
+.notice-bar{display:flex;align-items:center;gap:8px;min-height:36px;padding:5px 9px;border:1px solid var(--line-2);border-radius:9px;background:var(--panel);overflow:hidden}
+.notice-chip{display:inline-flex;align-items:center;gap:4px;flex:none;max-width:260px;border:0;border-radius:99px;padding:4px 9px;background:var(--panel-2);color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+button.notice-chip{cursor:pointer}
+button.notice-chip:hover{filter:brightness(.97)}
+.notice-chip.ok{background:var(--ok-weak);color:var(--ok)}
+.notice-chip.warn{background:var(--warn-weak);color:var(--warn)}
+.notice-chip.bad{background:var(--bad-weak);color:var(--bad)}
+.notice-chip.info{background:var(--accent-weak);color:var(--accent)}
+.notice-all{margin-left:auto;flex:none;border:0;background:transparent;color:var(--accent);font-size:12px;padding:4px 6px;cursor:pointer;white-space:nowrap}
+.notice-panel{position:absolute;z-index:30;top:48px;left:28px;right:28px;max-height:min(430px,calc(100vh - 210px));overflow:auto;padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:0 10px 36px rgba(0,0,0,.18)}
+.notice-panel[hidden]{display:none}
+.notice-detail{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;font-size:13px;line-height:1.55}
+.notice-detail+.notice-detail{margin-top:6px}
+.notice-detail.warn{background:var(--warn-weak);color:var(--warn)}
+.notice-detail.info{background:var(--accent-weak);color:var(--accent)}
+.notice-detail.bad{background:var(--bad-weak);color:var(--bad)}
+.notice-detail .grow{flex:1;min-width:0;user-select:text;-webkit-user-select:text}
 .chip{border:1px solid currentColor;background:transparent;color:inherit;border-radius:99px;padding:1px 9px;font-size:12px;cursor:pointer;margin-left:4px}
 .split{flex:1;display:flex;min-height:0;margin-top:12px;border-top:1px solid var(--line)}
 .thumbs{width:200px;flex:none;overflow:auto;padding:14px;border-right:1px solid var(--line);background:var(--panel-2)}
@@ -252,7 +264,10 @@ details.adv[open] summary::before{transform:rotate(90deg)}
     <div class="title" id="r-name"></div>
     <div class="stat" id="r-stats"></div>
   </div>
-  <div class="banners" id="banners"></div>
+  <div class="notice-wrap" id="notice-wrap">
+    <div class="notice-bar" id="notice-bar"></div>
+    <div class="notice-panel" id="notice-panel" hidden></div>
+  </div>
   <div class="split">
     <div class="thumbs" id="thumbs"></div>
     <div class="viewer" id="viewer"><div class="page-wrap" id="page-wrap"><img id="page-img" alt=""></div></div>
@@ -404,12 +419,33 @@ window.onDone = r => {
 };
 
 /* ---------- 复核 ---------- */
-function fmtSuggest(t) {
-  if (!t || Math.abs(t.suggest_delay - t.delay) < 0.3) return null;
-  const hit = Object.entries(PRESETS).find(([, p]) => Math.abs(p.delay - t.suggest_delay) < 0.25);
-  return hit ? {label: `「${hit[1].label}」档`, apply: {preset: hit[0], delay: hit[1].delay, lag_wait: hit[1].lag_wait}}
-             : {label: `自定义等待 ${t.suggest_delay} 秒`, apply: {preset: "custom", delay: t.suggest_delay}};
+/* timing-advice-start：tests/timing_advice_test.py 会直接测试这个纯函数 */
+function timingAdvice(t, presets, currentPreset) {
+  const n = t && Number.isFinite(t.n) ? t.n : 0;
+  if (!t || n < 3) return {kind: "insufficient", short: "网速样本不足", text: `本次只有 ${n} 次有效滚动样本，暂无法可靠判断档位。`};
+  const detail = `响应中位数 ${t.p50.toFixed(1)} 秒，90% 在 ${t.p90.toFixed(1)} 秒内`;
+  const current = presets[currentPreset];
+  const currentLabel = current ? `当前「${current.label}」档` : `当前自定义等待 ${t.delay} 秒`;
+  if (Math.abs(t.suggest_delay - t.delay) < 0.3)
+    return {kind: "suitable", short: "网速合适", text: `${currentLabel}合适（${detail}）。`};
+  const hit = Object.entries(presets).find(([, p]) => Math.abs(p.delay - t.suggest_delay) < 0.25);
+  const advice = hit ? {label: `「${hit[1].label}」档`, apply: {preset: hit[0], delay: hit[1].delay, lag_wait: hit[1].lag_wait}}
+                     : {label: `自定义等待 ${t.suggest_delay} 秒`, apply: {preset: "custom", delay: t.suggest_delay}};
+  const issues = [t.late ? `${t.late} 次需要额外等待` : "", t.timeouts ? `${t.timeouts} 次等待超时` : ""].filter(Boolean).join("，");
+  return {kind: "recommend", short: `网速建议：${advice.label}`, text: `${detail}${issues ? `，${issues}` : ""}，建议下次使用 ${advice.label}。`, apply: advice.apply};
 }
+/* timing-advice-end */
+function closeNotices() {
+  $("#notice-panel").hidden = true;
+  $$("[data-open-notices]").forEach(b => b.setAttribute("aria-expanded", "false"));
+}
+function toggleNotices() {
+  const open = $("#notice-panel").hidden;
+  $("#notice-panel").hidden = !open;
+  $$("[data-open-notices]").forEach(b => b.setAttribute("aria-expanded", String(open)));
+}
+document.addEventListener("click", e => { if (!e.target.closest("#notice-wrap")) closeNotices(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeNotices(); });
 function renderReview() {
   const r = result, t = r.timing;
   $("#r-name").textContent = r.name;
@@ -417,24 +453,43 @@ function renderReview() {
     r.pdf_mb != null ? `PDF <b>${r.pdf_mb}</b> MB` : null,
     t ? `远程平均响应 <b>${t.mean.toFixed(1)}</b> 秒` : null, REASON[r.reason] || null].filter(Boolean).join(" · ");
   const bs = [];
+  const advice = timingAdvice(t, PRESETS, S.preset);
+  bs.push(`<div class="notice-detail info" id="network-detail"><span class="grow">远程网速：${advice.text}</span>` +
+    (advice.apply ? `<button class="btn" id="apply-sg">采用</button>` : "") + `</div>`);
   const c = r.compress;
-  if (c && c.over) bs.push(`<div class="banner bad"><span class="grow">PDF 有 ${c.size_mb} MB，超过 ${c.limit_mb} MB 上限：已压到能保证文字清晰的最低限度。可以分两次截图（每次截一半文档）。</span></div>`);
-  else if (c && (c.scaled_pages.length || c.gray_pages.length)) bs.push(`<div class="banner info"><span class="grow">` +
+  let issueCount = 0;
+  if (c && c.over) {
+    issueCount++;
+    bs.push(`<div class="notice-detail bad"><span class="grow">PDF 有 ${c.size_mb} MB，超过 ${c.limit_mb} MB 上限：已压到能保证文字清晰的最低限度。可以分两次截图（每次截一半文档）。</span></div>`);
+  } else if (c && (c.scaled_pages.length || c.gray_pages.length)) bs.push(`<div class="notice-detail info"><span class="grow">` +
     [c.scaled_pages.length ? `为装进 ${c.limit_mb} MB，${c.scaled_pages.length} 页字较大的页面降低了分辨率（已验证文字仍清晰）` : "",
      c.gray_pages.length ? `第 ${c.gray_pages.join("、")} 页含图片或特殊配色，转黑白会看不清，保留为灰度` : ""].filter(Boolean).join("；") + `。</span></div>`);
-  if (r.reason === "moved" || r.reason === "stopped")
-    bs.push(`<div class="banner warn"><span class="grow">截图在中途停止，文档可能没有截全。</span></div>`);
+  if (r.reason === "moved" || r.reason === "stopped") {
+    issueCount++;
+    bs.push(`<div class="notice-detail warn"><span class="grow">截图在中途停止，文档可能没有截全。</span></div>`);
+  }
   if (r.seams.length) {
+    issueCount++;
     const pages = [...new Set(r.seams.map(s => s.page))];
-    bs.push(`<div class="banner warn"><span class="grow">有 ${r.seams.length} 处可疑拼接，请核对是否有重复或缺失的行：` +
+    bs.push(`<div class="notice-detail warn"><span class="grow">有 ${r.seams.length} 处可疑拼接，请核对是否有重复或缺失的行：` +
       pages.map(p => `<button class="chip" data-go="${p - 1}">第 ${p} 页</button>`).join("") + `</span></div>`);
   }
-  const sg = fmtSuggest(t);
-  if (sg) bs.push(`<div class="banner info"><span class="grow">本次远程响应中位数 ${t.p50.toFixed(1)} 秒，建议下次使用 ${sg.label}。</span>` +
-    `<button class="btn" id="apply-sg">采用</button></div>`);
-  $("#banners").innerHTML = bs.join("");
-  $$("[data-go]").forEach(b => b.onclick = () => openPage(+b.dataset.go));
-  if (sg) $("#apply-sg").onclick = () => { Object.assign(S, sg.apply); renderPreset(); renderAdv(); persist(); toast("已采用，下次截图生效"); $("#apply-sg").closest(".banner").remove(); };
+  const issueChip = issueCount ? `<button class="notice-chip ${c && c.over ? "bad" : "warn"}" data-open-notices>⚠ ${issueCount} 项需要检查</button>` : "";
+  const networkClass = advice.kind === "recommend" ? "info" : advice.kind === "suitable" ? "ok" : "";
+  $("#notice-bar").innerHTML = issueChip +
+    `<button class="notice-chip ${networkClass}" id="network-chip" data-open-notices>${advice.short}</button>` +
+    `<button class="notice-all" data-open-notices aria-expanded="false">查看全部</button>`;
+  $("#notice-panel").innerHTML = bs.join("");
+  closeNotices();
+  $$("[data-open-notices]").forEach(b => b.onclick = toggleNotices);
+  $$("#notice-panel [data-go]").forEach(b => b.onclick = () => { closeNotices(); openPage(+b.dataset.go); });
+  if (advice.apply) $("#apply-sg").onclick = () => {
+    Object.assign(S, advice.apply); renderPreset(); renderAdv(); persist(); toast("已采用，下次截图生效");
+    $("#network-chip").textContent = "✓ 已采用，下次生效";
+    $("#network-chip").className = "notice-chip ok";
+    $("#network-detail").innerHTML = `<span class="grow">远程网速：已采用建议，下次截图生效。</span>`;
+    closeNotices();
+  };
   $("#r-ratio").value = String(S.page_ratio);
 
   const seamPages = new Set(r.seams.map(s => s.page - 1));

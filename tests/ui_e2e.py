@@ -70,6 +70,37 @@ def _run():
         import faulthandler; print("!! 60 秒未完成，各线程当前位置：", flush=True); faulthandler.dump_traceback(all_threads=True)
     time.sleep(2.5)
     shot(app.APP, "/tmp/e2e_review.png")
+    api._main.resize(900, 640)  # 最小窗口：多提示也只能占一行，不能横向溢出
+    time.sleep(0.5)
+    layout = api._main.evaluate_js("""
+      (() => {
+        result = {...result, reason: "stopped",
+          timing: {n: 8, mean: 1.4, p50: 1.2, p90: 2, delay: .6, suggest_delay: 1.5, late: 2, timeouts: 1},
+          compress: {over: false, size_mb: 12, limit_mb: 48, scaled_pages: [2], gray_pages: [3]},
+          seams: [{page: 1}, {page: 2}]};
+        renderReview();
+        const bar = document.querySelector("#notice-bar");
+        const checks = {height: bar.getBoundingClientRect().height,
+          overflow: bar.scrollWidth > bar.clientWidth,
+          details: document.querySelectorAll("#notice-panel .notice-detail").length,
+          startsClosed: document.querySelector("#notice-panel").hidden,
+          summary: bar.textContent};
+        document.querySelector(".notice-all").click();
+        checks.opened = !document.querySelector("#notice-panel").hidden;
+        document.querySelector("#notice-panel [data-go]").click();
+        checks.jumpClosed = document.querySelector("#notice-panel").hidden;
+        document.querySelector(".notice-all").click();
+        document.querySelector("#apply-sg").click();
+        checks.adopted = S.preset === "slow";
+        checks.applyClosed = document.querySelector("#notice-panel").hidden;
+        return checks;
+      })()
+    """)
+    print("紧凑检查栏:", layout, flush=True)
+    assert layout["height"] <= 44 and not layout["overflow"], "检查栏过高或横向溢出"
+    assert layout["details"] == 4 and layout["startsClosed"], "详情未完整收入浮层"
+    assert "2 项需要检查" in layout["summary"] and "卡顿" in layout["summary"], "重要摘要未显示"
+    assert layout["opened"] and layout["jumpClosed"] and layout["adopted"] and layout["applyClosed"], "详情操作失效"
     print("截图次数", seen["grabs"], "其中遮罩仍可见的次数", seen["overlay_visible_at_grab"])
     d = app.OUT_ROOT / "界面测试"
     print("输出目录内容:", sorted(p.name for p in d.iterdir()) if d.exists() else "（不存在）")
