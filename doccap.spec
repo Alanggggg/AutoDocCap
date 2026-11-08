@@ -17,6 +17,7 @@ coll = COLLECT(exe, a.binaries, a.datas, name="doccap")
 app = BUNDLE(
     coll,
     name="AutoDocCap.app",
+    icon="assets/AutoDocCap.icns",
     bundle_identifier="io.github.doccap",
     version=VERSION,
     info_plist={

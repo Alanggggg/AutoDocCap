@@ -52,6 +52,7 @@ def run():
 
 def _run():
     time.sleep(3)
+    shot(app.APP, "/tmp/e2e_prepare.png")  # 临时设置、无选区，仅用于检查主界面布局
     s = dict(app.DEFAULTS, region=REGION, delay=0.2, lag_wait=1.0, poll=0.1, countdown=2, ocr=True,
              output_dir=str(app.OUT_ROOT))
     app.save_settings(s)  # 区域只认设置文件里的（正常由"框选区域"写入）
@@ -75,6 +76,17 @@ def _run():
         import faulthandler; print("!! 60 秒未完成，各线程当前位置：", flush=True); faulthandler.dump_traceback(all_threads=True)
     time.sleep(2.5)
     shot(app.APP, "/tmp/e2e_review.png")
+    # 真实执行一次“长页”重新分页：界面、设置文件和任务元数据都必须保持 2.0
+    done.clear()
+    api._main.evaluate_js("document.querySelector('#r-ratio').value = '2'; rebuild(false);")
+    if not done.wait(60):
+        raise AssertionError("长页重新分页超时")
+    time.sleep(1)
+    page_state = api._main.evaluate_js("({selected: document.querySelector('#r-ratio').value, setting: S.page_ratio, pages: result.pages.length})")
+    saved_ratio = app.load_settings()["page_ratio"]
+    print("长页重新分页:", page_state, "已保存:", saved_ratio, flush=True)
+    assert page_state["selected"] == "2" and page_state["setting"] == 2.0 and saved_ratio == 2.0, "长页选择被重置"
+    assert page_state["pages"] < 6, "重新分页没有实际改变页面数量"
     api._main.resize(900, 640)  # 最小窗口：多提示也只能占一行，不能横向溢出
     time.sleep(0.5)
     layout = api._main.evaluate_js("""
@@ -87,9 +99,14 @@ def _run():
         const bar = document.querySelector("#notice-bar");
         const checks = {height: bar.getBoundingClientRect().height,
           overflow: bar.scrollWidth > bar.clientWidth,
+          footerOverflow: document.querySelector(".rv-foot").scrollWidth > document.querySelector(".rv-foot").clientWidth,
           details: document.querySelectorAll("#notice-panel .notice-detail").length,
           startsClosed: document.querySelector("#notice-panel").hidden,
           summary: bar.textContent};
+        document.querySelector("#page-help").click();
+        checks.helpOpened = document.querySelector("#page-help-dialog").open;
+        document.querySelector("#close-page-help").click();
+        checks.helpClosed = !document.querySelector("#page-help-dialog").open;
         document.querySelector(".notice-all").click();
         checks.opened = !document.querySelector("#notice-panel").hidden;
         document.querySelector("#notice-panel [data-go]").click();
@@ -102,11 +119,14 @@ def _run():
       })()
     """)
     print("紧凑检查栏:", layout, flush=True)
-    assert layout["height"] <= 44 and not layout["overflow"], "检查栏过高或横向溢出"
+    assert layout["height"] <= 44 and not layout["overflow"] and not layout["footerOverflow"], "检查栏或底部操作区溢出"
     assert layout["details"] == 4 and layout["startsClosed"], "详情未完整收入浮层"
     assert "2 项需要检查" in layout["summary"] and "卡顿" in layout["summary"], "重要摘要未显示"
+    assert layout["helpOpened"] and layout["helpClosed"], "分页与拼接说明弹窗失效"
     assert layout["opened"] and layout["jumpClosed"] and layout["adopted"] and layout["applyClosed"], "详情操作失效"
     print("截图次数", seen["grabs"], "其中遮罩仍可见的次数", seen["overlay_visible_at_grab"])
     d = app.OUT_ROOT / "界面测试"
     print("输出目录内容:", sorted(p.name for p in d.iterdir()) if d.exists() else "（不存在）")
 webview.start(run)
+print("界面事件循环已正常退出", flush=True)
+os._exit(0)  # 部分 pywebview 后台线程在窗口销毁后仍可能残留；所有断言和文件写入均已完成

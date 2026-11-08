@@ -20,5 +20,8 @@ region_preview.png
 # 本机检查用的临时文件
 .check/
 
+# 图标概念包只保留在本机；正式资源使用 assets/AutoDocCap.*
+AutoDocCap图标概念包/
+
 # 给 AI agent 的交接文档（仅本机）
 HANDOFF.md

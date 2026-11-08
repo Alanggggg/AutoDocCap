@@ -161,6 +161,13 @@ button.notice-chip:hover{filter:brightness(.97)}
 .rv-foot{display:flex;align-items:center;gap:10px;padding:12px 28px;border-top:1px solid var(--line);background:var(--panel)}
 .rv-foot select{width:auto}
 .rv-foot .sep{flex:1}
+.help-dialog{width:min(520px,calc(100vw - 48px));border:1px solid var(--line);border-radius:14px;padding:22px;background:var(--panel);color:var(--text);box-shadow:0 16px 50px rgba(0,0,0,.25)}
+.help-dialog::backdrop{background:rgba(0,0,0,.35)}
+.help-dialog h3{font-size:17px;margin:0 0 16px}
+.help-item{padding:12px 14px;border-radius:9px;background:var(--panel-2)}
+.help-item+.help-item{margin-top:10px}
+.help-item b{color:var(--accent)}
+.help-item p{margin:4px 0 0;color:var(--muted);line-height:1.65;user-select:text;-webkit-user-select:text}
 
 .toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:9px;font-size:13px;
   box-shadow:0 6px 24px rgba(0,0,0,.2);max-width:70%;white-space:pre-wrap;opacity:0;pointer-events:none;transition:opacity .2s}
@@ -202,8 +209,10 @@ button.notice-chip:hover{filter:brightness(.97)}
           <button data-p="fast">流畅</button><button data-p="normal">一般</button><button data-p="slow">卡顿</button><button data-p="custom">自定义</button>
         </div>
         <p class="hint" id="preset-desc"></p>
+      </div>
 
-        <h2 style="margin-top:18px">输出</h2>
+      <div class="card">
+        <h2>输出文档</h2>
         <div class="switch"><span>生成可搜索的文字（OCR）<br><span class="hint" style="margin:0">PDF 可搜索、可复制，另存一份 txt；关掉更快</span></span>
           <label class="toggle"><input type="checkbox" id="ocr"><span></span></label></div>
         <div class="switch"><span>压缩为黑白 PDF<br><span class="hint" style="margin:0">体积约为原图的 1/10，小字保持原分辨率；用于上传有大小限制的系统</span></span>
@@ -211,10 +220,12 @@ button.notice-chip:hover{filter:brightness(.97)}
         <div class="switch" id="limit-row"><span>PDF 大小上限</span>
           <span class="row" style="gap:6px"><input type="number" id="limit" min="1" max="2000" step="1" style="width:90px"> MB</span></div>
         <div class="switch"><span>分页大小</span>
-          <select id="ratio" style="width:150px"><option value="1.414">A4（标准）</option><option value="1.0">短页</option><option value="2.0">长页</option></select></div>
+          <select id="ratio" style="width:150px"><option value="1.414">A4（标准）</option><option value="1">短页</option><option value="2">长页</option></select></div>
+      </div>
 
-        <details class="adv" id="adv">
-          <summary>高级设置</summary>
+      <div class="card">
+        <details class="adv" id="adv" style="margin-top:0">
+          <summary>高级截图设置</summary>
           <div class="adv-grid">
             <div><label>滚动后最少等待（秒）</label><input type="number" data-k="delay" step="0.1" min="0.1" max="10"><small>远程卡顿就调大</small></div>
             <div><label>画面没变时额外等待（秒）</label><input type="number" data-k="lag_wait" step="0.5" min="0.5" max="20"><small>用来区分"远程卡了"和"到底了"</small></div>
@@ -277,9 +288,10 @@ button.notice-chip:hover{filter:brightness(.97)}
     <div class="viewer" id="viewer"><div class="page-wrap" id="page-wrap"><img id="page-img" alt=""></div></div>
   </div>
   <div class="rv-foot">
-    <select id="r-ratio"><option value="1.414">A4（标准）</option><option value="1.0">短页</option><option value="2.0">长页</option></select>
-    <button class="btn" id="re-page">重新分页</button>
-    <button class="btn" id="re-stitch" title="用最新算法重新计算每张截图的位移，不需要重新截图">重新拼接</button>
+    <select id="r-ratio" title="选择每页的高度比例"><option value="1.414">A4（标准）</option><option value="1">短页</option><option value="2">长页</option></select>
+    <button class="btn" id="re-page" title="只调整每页长度，不修改截图衔接">重新分页</button>
+    <button class="btn" id="re-stitch" title="重新对齐截图，处理重复、缺行或错位">修复拼接</button>
+    <button class="btn ghost" id="page-help">区别</button>
     <span class="sep"></span>
     <button class="btn primary" id="open-pdf">打开 PDF</button>
     <button class="btn" id="open-folder">打开文件夹</button>
@@ -288,6 +300,14 @@ button.notice-chip:hover{filter:brightness(.97)}
   </div>
 </section>
 </main>
+
+<dialog class="help-dialog" id="page-help-dialog">
+  <h3>重新分页和修复拼接有什么区别？</h3>
+  <div class="help-item"><b>重新分页</b><p>只改变每页的长度，不修改截图之间的衔接。<br>适合：切换 A4／短页／长页。</p></div>
+  <div class="help-item"><b>修复拼接</b><p>重新对齐相邻截图，再重新分页，耗时更长。<br>适合：重复行、缺行、上下错位。</p></div>
+  <p class="hint">两者都不需要重新截图，都会重新生成 PDF 和可搜索文字，但都无法补回当初没有截到的内容。</p>
+  <div style="text-align:right;margin-top:16px"><button class="btn primary" id="close-page-help">知道了</button></div>
+</dialog>
 
 <div class="toast" id="toast"></div>
 
@@ -318,7 +338,7 @@ function renderPerms() {
 function renderPreset() {
   $$("#preset button").forEach(b => b.classList.toggle("on", b.dataset.p === S.preset));
   $("#preset-desc").textContent = `滚动后至少等 ${S.delay} 秒；画面没变时再多等 ${S.lag_wait} 秒确认` +
-    (S.preset === "custom" ? "（自定义，可在高级设置里修改）" : "");
+    (S.preset === "custom" ? "（自定义，可在高级截图设置里修改）" : "");
 }
 function renderAdv() { $$("[data-k]").forEach(i => i.value = S[i.dataset.k]); }
 function renderRegion(preview) {
@@ -541,14 +561,20 @@ async function openPage(i) {
 }
 async function rebuild(restitch) {
   const ratio = +$("#r-ratio").value;
+  S.page_ratio = ratio;
+  await api.save_settings(S);
   $("#log").textContent = ""; $("#work-count").textContent = "";
-  $("#work-title").textContent = restitch ? "正在重新拼接" : "正在重新分页"; $("#work-sub").textContent = "请稍候，不需要任何操作。"; setBar(null);
-  show("work");
+  $("#work-title").textContent = restitch ? "正在修复拼接" : "正在重新分页";
+  $("#work-sub").textContent = restitch ? "正在重新对齐截图，用于修复重复、缺行或错位；完成后会重新分页。" : "正在按所选页面大小重新分页，不会更改截图衔接。";
+  setBar(null); show("work");
   const r = await api.rebuild(ratio, restitch);
   if (r.error) { show("review"); toast(r.error, true); }
 }
 $("#re-page").onclick = () => rebuild(false);
 $("#re-stitch").onclick = () => rebuild(true);
+$("#page-help").onclick = () => $("#page-help-dialog").showModal();
+$("#close-page-help").onclick = () => $("#page-help-dialog").close();
+$("#page-help-dialog").addEventListener("click", e => { if (e.target === $("#page-help-dialog")) $("#page-help-dialog").close(); });
 $("#open-pdf").onclick = () => api.open_path("pdf");
 $("#open-folder").onclick = () => api.open_path("folder");
 $("#again").onclick = () => { $("#name").value = defaultName(); show("prepare"); };
