@@ -20,6 +20,7 @@ doccap.grab = lambda r: truth[pos["y"]:pos["y"] + H].copy()
 def scroll(t): pos["y"] = int(np.clip(pos["y"] - t * 80, 0, truth.shape[0] - H))
 doccap.scroll, doccap.mouse_pos, doccap.move_mouse = scroll, (lambda: park), (lambda x, y: None)
 doccap.permissions = lambda: {"screen": True, "input": True}
+app.save_settings(dict(app.DEFAULTS, output_dir=str(app.OUT_ROOT)))  # 窗口初始化前隔离输出路径
 
 api = app.Api()
 api._main = webview.create_window(app.APP, html=(app.BASE / "ui/index.html").read_text(), js_api=api, width=1040, height=760)
@@ -51,8 +52,12 @@ def run():
 
 def _run():
     time.sleep(3)
-    s = dict(app.DEFAULTS, region=REGION, delay=0.2, lag_wait=1.0, poll=0.1, countdown=2, ocr=True)
+    s = dict(app.DEFAULTS, region=REGION, delay=0.2, lag_wait=1.0, poll=0.1, countdown=2, ocr=True,
+             output_dir=str(app.OUT_ROOT))
     app.save_settings(s)  # 区域只认设置文件里的（正常由"框选区域"写入）
+    ui_path = api._main.evaluate_js("document.querySelector('#out-root').textContent")
+    assert ui_path == str(app.OUT_ROOT), ("界面保存位置不正确", ui_path, app.OUT_ROOT)
+    print("界面保存位置:", ui_path, flush=True)
     print("start:", api.start("界面测试", s), flush=True)
     time.sleep(1.2); shot("截图进度", "/tmp/e2e_bar_countdown.png")
     ov = api._overlay.native  # 此时正处于倒计时，遮罩已现场新建

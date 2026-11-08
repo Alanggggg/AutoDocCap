@@ -12,6 +12,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -29,8 +30,8 @@ BASE = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
 SUPPORT = Path.home() / "Library/Application Support" / "需求文档截图工具"
 SETTINGS = SUPPORT / "settings.json"
 PREVIEW = SUPPORT / "region_preview.png"
-# 不放在桌面或文稿：这两个文件夹可能开着 iCloud 同步，截下来的文档会被传到云上
-OUT_ROOT = Path.home() / "需求文档截图输出"
+# 默认不放在桌面或文稿：这两个文件夹可能开着 iCloud 同步；用户可在界面中另行选择
+OUT_ROOT = Path.home() / "AutoDocCap_output"
 
 PRESETS = {
     "fast": {"label": "流畅", "delay": 0.4, "lag_wait": 1.5},
@@ -39,7 +40,7 @@ PRESETS = {
 }
 DEFAULTS = {"preset": "normal", "delay": 0.6, "lag_wait": 2.0, "poll": 0.3, "settle_timeout": 6.0,
             "step": 0.6, "page_ratio": 1.414, "max_frames": 3000, "countdown": 5, "ocr": True,
-            "compact": True, "pdf_limit_mb": 48,
+            "compact": True, "pdf_limit_mb": 48, "output_dir": str(OUT_ROOT),
             "region": None}
 BAR_W, BAR_H = 420, 78
 
@@ -67,11 +68,35 @@ def data_uri(path, width, quality=82):
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
-def unique_dir(name):
+def output_root(settings=None):
+    s = load_settings() if settings is None else settings
+    try:
+        root = Path(s.get("output_dir") or OUT_ROOT).expanduser()
+    except TypeError:
+        raise doccap.CaptureError("保存位置无效，请重新选择文件夹。")
+    if not root.is_absolute():
+        raise doccap.CaptureError("保存位置无效，请重新选择文件夹。")
+    return root
+
+
+def prepare_output_root(settings=None):
+    """在截图前确认保存位置可写；临时文件立即删除，不留下探测文件。"""
+    root = output_root(settings)
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(prefix=".autodoccap-write-test-", dir=root):
+            pass
+    except OSError as e:
+        raise doccap.CaptureError(f"无法写入保存位置：{root}\n{e}")
+    return root
+
+
+def unique_dir(name, root=None):
+    root = output_root() if root is None else Path(root)
     name = "".join(c for c in name.strip() if c not in '/\\:*?"<>|').strip() or time.strftime("文档_%m%d_%H%M")
-    out, n = OUT_ROOT / name, 2
+    out, n = root / name, 2
     while out.exists():
-        out, n = OUT_ROOT / f"{name}_{n}", n + 1
+        out, n = root / f"{name}_{n}", n + 1
     return out
 
 
@@ -197,7 +222,7 @@ class Api:
         if len(sys.argv) > 2 and sys.argv[1] == "--open":  # 调试用：直接打开某个输出目录进入复核
             opened = self.open_job(sys.argv[2])
         return {"settings": s, "presets": PRESETS, "perms": doccap.permissions(),
-                "out_root": str(OUT_ROOT), "default_name": time.strftime("文档_%m%d_%H%M"),
+                "out_root": str(output_root(s)), "default_name": time.strftime("文档_%m%d_%H%M"),
                 "preview": data_uri(PREVIEW, 1200) if s.get("region") and PREVIEW.exists() else None,
                 "opened": opened}
 
@@ -213,6 +238,20 @@ class Api:
         cur.update({k: s[k] for k in DEFAULTS if k in s and k != "region"})
         save_settings(cur)
         return cur
+
+    def select_output(self):
+        try:
+            selected = self._main.create_file_dialog(webview.FileDialog.FOLDER)
+            if not selected:
+                return {"cancelled": True}
+            s = load_settings()
+            s["output_dir"] = str(prepare_output_root({"output_dir": selected[0]}))
+            save_settings(s)
+            return {"path": s["output_dir"]}
+        except doccap.CaptureError as e:
+            return {"error": str(e)}
+        except Exception as e:
+            return {"error": f"选择保存位置失败：{e}"}
 
     def select_region(self, wait=3):
         self._main.hide()
@@ -257,7 +296,11 @@ class Api:
             return {"error": "请先框选截图区域。"}
         if not all(doccap.permissions().values()):
             return {"error": "请先授予「屏幕录制」和「辅助功能」权限。"}
-        out = unique_dir(name)
+        try:
+            root = prepare_output_root(s)
+        except doccap.CaptureError as e:
+            return {"error": str(e)}
+        out = unique_dir(name, root)
         pos = bar_position(s["region"])
         self._busy = True
         self._stop.clear()
@@ -412,9 +455,12 @@ class Api:
         return False
 
     def open_output_root(self):
-        OUT_ROOT.mkdir(parents=True, exist_ok=True)
-        subprocess.run(["open", str(OUT_ROOT)])
-        return True
+        try:
+            root = prepare_output_root()
+            subprocess.run(["open", str(root)])
+            return True
+        except doccap.CaptureError as e:
+            return {"error": str(e)}
 
     def delete_job(self):
         if self._busy or not self._job:

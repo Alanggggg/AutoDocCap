@@ -189,7 +189,11 @@ button.notice-chip:hover{filter:brightness(.97)}
       <div class="card">
         <h2><span class="n">1</span>文档名</h2>
         <input type="text" id="name" maxlength="80" spellcheck="false">
-        <p class="hint">保存到 <span id="out-root"></span> <button class="btn ghost" id="open-root">打开</button></p>
+        <p class="hint">保存位置</p>
+        <div class="row" style="align-items:flex-start">
+          <span class="hint" id="out-root" style="flex:1;margin:2px 0 0;word-break:break-all;user-select:text;-webkit-user-select:text"></span>
+          <button class="btn" id="choose-output">选择文件夹</button><button class="btn" id="open-root">打开</button>
+        </div>
       </div>
 
       <div class="card">
@@ -370,7 +374,20 @@ $("#limit").onchange = e => { const v = parseFloat(e.target.value); S.pdf_limit_
 $("#ratio").onchange = e => { S.page_ratio = +e.target.value; persist(); };
 $$("[data-perm]").forEach(b => b.onclick = async () => { perms = await api.request_permission(b.dataset.perm); renderPerms(); $("#perm-hint").hidden = false; });
 $("#perm-recheck").onclick = async () => { perms = await api.permissions(); renderPerms(); };
-$("#open-root").onclick = () => api.open_output_root();
+function renderOutputRoot() {
+  const path = S.output_dir || "";
+  $("#out-root").textContent = path.replace(/^\/Users\/[^/]+/, "~");
+  $("#out-root").title = path;
+}
+$("#choose-output").onclick = async () => {
+  const r = await api.select_output();
+  if (r.error) return toast(r.error, true);
+  if (r.path) { S.output_dir = r.path; renderOutputRoot(); toast("已更新保存位置"); }
+};
+$("#open-root").onclick = async () => {
+  const r = await api.open_output_root();
+  if (r && r.error) toast(r.error, true);
+};
 $("#preview").onclick = () => { if ($("#preview").classList.contains("has")) api.open_preview(); };
 
 $("#pick").onclick = async () => {
@@ -556,8 +573,8 @@ function defaultName() { const d = new Date(), p = n => String(n).padStart(2, "0
 window.addEventListener("pywebviewready", async () => {
   api = window.pywebview.api;
   const init = await api.init();
-  S = init.settings; PRESETS = init.presets; perms = init.perms; S.default_name = init.default_name;
-  $("#name").value = init.default_name; $("#out-root").textContent = init.out_root.replace(/^\/Users\/[^/]+/, "~");
+  S = init.settings; PRESETS = init.presets; perms = init.perms; S.default_name = init.default_name; S.output_dir = init.out_root;
+  $("#name").value = init.default_name; renderOutputRoot();
   $("#ocr").checked = S.ocr; $("#ratio").value = String(S.page_ratio);
   $("#compact").checked = S.compact !== false; $("#limit").value = S.pdf_limit_mb ?? 48; $("#limit-row").hidden = !$("#compact").checked;
   renderPerms(); renderPreset(); renderAdv(); renderRegion(init.preview);
