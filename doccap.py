@@ -62,13 +62,20 @@ def move_mouse(x, y):
 
 
 def scroll(ticks):
-    """ticks < 0 向下滚。逐格发送，模拟真实滚轮，远程客户端转发更稳定。"""
+    """ticks < 0 向下滚。逐格发送，模拟真实滚轮，远程客户端转发更稳定。
+    返回最后一格事件发出后的单调时钟，作为画面响应计时的起点。
+    """
     import Quartz
     step = -1 if ticks < 0 else 1
-    for _ in range(abs(ticks)):
+    count = abs(ticks)
+    posted_at = time.monotonic()
+    for i in range(count):
         ev = Quartz.CGEventCreateScrollWheelEvent(None, Quartz.kCGScrollEventUnitLine, 1, step)
         Quartz.CGEventPost(Quartz.kCGHIDEventTap, ev)
-        time.sleep(0.03)
+        posted_at = time.monotonic()
+        if i + 1 < count:
+            time.sleep(0.03)
+    return posted_at
 
 
 def grab(region):
@@ -294,27 +301,28 @@ def capture(region, out, opt, on_event=print_event, stop=None):
     def settle(ref=None):
         """等画面停止变化（平滑滚动、懒加载、远程传输延迟），至少等 opt.delay 秒。
 
-        ref 为滚动前的画面：记录画面第一次与它不同的时刻，减去发出滚动的时刻即远程的
+        ref 为滚动前的画面：记录画面第一次与它不同的时刻，减去发出滚动的时刻即画面
         响应时间。超时仍不稳定时置 flags["timeout"]，由调用方告警并标为可疑。
         """
-        t0 = time.time()
+        t0 = time.monotonic()
         a = grab(region)
         last_same = t0  # 最近一次确认"还没变"的时刻；变化时刻取它与"首次发现变化"的中点
         changed = ref is None or not same(a, ref)
         if ref is not None and changed:
-            note_latency(t0, time.time())
+            # 第一次截图已变化，只能确定响应不超过这次观测耗时；取上限，不再折半低估。
+            note_latency(t0, time.monotonic(), upper_bound=True)
         elif ref is not None:
-            last_same = time.time()
-        while time.time() - t0 < opt.delay + settle_timeout:
+            last_same = time.monotonic()
+        while time.monotonic() - t0 < opt.delay + settle_timeout:
             time.sleep(poll)
             b = grab(region)
             if not changed:
                 if same(b, ref):
-                    last_same = time.time()
+                    last_same = time.monotonic()
                 else:
                     changed = True
-                    note_latency(last_same, time.time())
-            if same(a, b) and time.time() - t0 >= opt.delay:
+                    note_latency(last_same, time.monotonic())
+            if same(a, b) and time.monotonic() - t0 >= opt.delay:
                 return b
             a = b
         flags["timeout"] = True
@@ -322,15 +330,16 @@ def capture(region, out, opt, on_event=print_event, stop=None):
         emit("warn", f"  ⚠ 等了 {opt.delay + settle_timeout:.0f} 秒画面仍在变化，用最后一张（可能是半渲染画面）")
         return a
 
-    def note_latency(before, after):
-        if flags["scrolled_at"] is not None:
-            latencies.append(max(0.0, (before + after) / 2 - flags["scrolled_at"]))
+    def note_latency(before, after, upper_bound=False):
+        started = flags["scrolled_at"]
+        if started is not None:
+            changed_at = after if upper_bound else (before + after) / 2
+            latencies.append(max(0.0, changed_at - started))
             flags["scrolled_at"] = None  # 每次滚动只记一次
 
     def step(ticks, ref):
         check_mouse()
-        scroll(ticks)
-        flags["scrolled_at"] = time.time()
+        flags["scrolled_at"] = scroll(ticks)
         return settle(ref)
 
     def drain(img, wait):
@@ -350,19 +359,19 @@ def capture(region, out, opt, on_event=print_event, stop=None):
         等待时长至少为已观测到的最慢响应的 1.5 倍——遇到过一次长卡顿，后面就多等些。
         """
         wait = max(wait, 1.5 * max(latencies, default=0))
-        t0 = last = time.time()
-        while time.time() - t0 < wait:
+        t0 = last = time.monotonic()
+        while time.monotonic() - t0 < wait:
             check_mouse()
             time.sleep(poll)
             if not same(grab(region), ref):
-                note_latency(last, time.time())
+                note_latency(last, time.monotonic())
                 break
-            last = time.time()
+            last = time.monotonic()
         else:
             return None
         img = settle(ref)
         stats["late"] += 1
-        emit("lag", f"  远程响应慢：{why}，额外等待 {time.time() - t0:.1f} 秒后画面才更新")
+        emit("lag", f"  画面响应慢：{why}，额外等待 {time.monotonic() - t0:.1f} 秒后画面才更新")
         return img
 
     emit("info", "请切到远程桌面窗口，在文档正文处单击一下让它获得焦点，把文档滚到最顶部。\n"
@@ -489,7 +498,7 @@ def capture(region, out, opt, on_event=print_event, stop=None):
                  + (f"  ⚠ 预期约 {expected:.0f}px，可疑" if odd else "")
                  + ("  ⚠ 画面未稳定，可疑" if flags["timeout"] else ""),
                  n=len(frames), shift=d, err=round(err, 1), suspicious=bool(sus),
-                 n_suspicious=len(suspicious), latency=round(latencies[-1], 1) if latencies else None)
+                 n_suspicious=len(suspicious), latency=round(latencies[-1], 2) if latencies else None)
     except UserMoved:
         emit("info", "已停止截图。" if reason["v"] == "stopped" else "检测到鼠标移动，已停止截图。")
 
@@ -499,8 +508,13 @@ def capture(region, out, opt, on_event=print_event, stop=None):
     return {"frames": len(frames), "reason": reason["v"], "timing": timing}
 
 
+def format_response(seconds):
+    """小于 0.1 秒只表达上限，不把采样精度伪装成精确测量。"""
+    return "<0.1" if 0 <= seconds < 0.1 else f"{seconds:.1f}"
+
+
 def report_timing(latencies, stats, opt, emit):
-    """报告远程桌面的响应速度，并给出 delay 建议值。"""
+    """报告滚动后的画面响应速度，并给出 delay 建议值。"""
     if not latencies:
         return None
     lat = np.array(latencies)
@@ -510,8 +524,8 @@ def report_timing(latencies, stats, opt, emit):
     t = {"mean": round(float(lat.mean()), 2), "p50": round(p50, 2), "p90": round(p90, 2),
          "max": round(float(lat.max()), 2), "n": len(lat), "late": stats["late"],
          "timeouts": stats["timeouts"], "suggest_delay": suggest, "delay": opt.delay}
-    msg = (f"远程响应：平均 {t['mean']:.1f} 秒，90% 在 {p90:.1f} 秒内，最慢 {t['max']:.1f} 秒"
-           f"（共 {len(lat)} 次滚动）")
+    msg = (f"画面响应：平均 {format_response(t['mean'])} 秒，90% 在 {format_response(t['p90'])} 秒内，"
+           f"最慢 {format_response(t['max'])} 秒（共 {len(lat)} 次滚动）")
     if stats["late"] or stats["timeouts"]:
         msg += f"\n  其中 {stats['late']} 次需要额外等待才更新，{stats['timeouts']} 次等待超时"
     if abs(suggest - opt.delay) >= 0.3:
@@ -594,9 +608,70 @@ class Paginator:
         return max(1, sum(1 for s in self.starts if s <= row))
 
 
+def source_map(frames, offsets, heights):
+    """返回每页重叠出现的原始帧编号（0 起），只读元数据，不做图像重算。"""
+    if not frames:
+        return []
+    H = Image.open(frames[0]).size[1]
+    ranges, added = [(0, H)], H
+    for i in range(1, len(frames)):
+        d = offsets[i] if i < len(offsets) else None
+        if not d or d <= 0:
+            ranges.append((added, added))
+            continue
+        start = added + d - H if d > H else added - (H - d)
+        end = start + H
+        ranges.append((start, end))
+        added = end
+    pages, start = [], 0
+    for height in heights:
+        end = start + height
+        pages.append([i for i, (a, b) in enumerate(ranges) if a < end and b > start])
+        start = end
+    return pages
+
+
+def source_frame_at(frames, offsets, heights, page, y):
+    """按最终页内的 y 坐标找实际贡献该行的帧，并返回帧内 y；重叠区沿用先截的帧。"""
+    if not frames or not 0 <= page < len(heights):
+        raise CaptureError("无效的最终页编号。")
+    row = sum(heights[:page]) + float(y)
+    if not 0 <= y < heights[page]:
+        raise CaptureError("点击位置超出了最终页。")
+    H = Image.open(frames[0]).size[1]
+    added = H
+    if 0 <= row < H:
+        return {"frame": 0, "y": int(row)}
+    for i in range(1, len(frames)):
+        d = offsets[i] if i < len(offsets) else None
+        if not d or d <= 0:
+            continue
+        if d > H:  # 先补空白，再采用新帧整图
+            start, end, source_start = added + d - H, added + d, 0
+        else:      # 重叠部分保留前帧，只采用新帧底部 d 行
+            start, end, source_start = added, added + d, H - d
+        if start <= row < end:
+            return {"frame": i, "y": int(source_start + row - start)}
+        added = end
+    return None
+
+
+def pair_shift(frames, old, i):
+    """只重算 frame i 与前一帧的位移，不修改任何文件。"""
+    if not 1 <= i < len(frames):
+        raise CaptureError("无效的拼接帧编号。")
+    H = Image.open(frames[0]).size[1]
+    normal = [d for d in old[1:] if d and d <= H * 0.88]
+    near = [x for x in old[max(1, i - 4):i + 5] if x and x <= H * 0.88]
+    expected = float(np.median(near or normal)) if (near or normal) else None
+    prev = np.asarray(Image.open(frames[i - 1]).convert("RGB"))
+    img = np.asarray(Image.open(frames[i]).convert("RGB"))
+    d, err = estimate_shift(prev, img, expected=expected)
+    return d, err, expected
+
+
 def build(out, opt, on_event=print_event):
-    """拼接、分页、OCR、生成 PDF。返回 {"pages", "heights", "width", "seams", "pdf", "txt"}，
-    seams 为可疑拼接位置 [{"page": 页码, "y": 页内像素行}]。"""
+    """拼接、分页、OCR、生成 PDF。seams 记录最终页位置及对应的原始帧。"""
     def emit(type_, msg="", **kw):
         on_event({"type": type_, "msg": msg, **kw})
 
@@ -609,9 +684,10 @@ def build(out, opt, on_event=print_event):
     if getattr(opt, "restitch", False):
         offsets = restitch(frames, offsets, emit)
         meta["offsets"] = offsets
-        meta["suspicious"] = []
+        # 重新计算不等于人工确认修复，可疑状态与已解决状态都必须保留。
         meta_file.write_text(json.dumps(meta))
     suspicious = set(meta.get("suspicious", []))
+    resolved = set(meta.get("resolved", []))
 
     pages_dir = out / "pages"
     pages_dir.mkdir(exist_ok=True)
@@ -624,7 +700,7 @@ def build(out, opt, on_event=print_event):
     pag = Paginator(W, opt.page_ratio, pages_dir)
     pag.add(prev)
     last_d = None
-    seam_rows = []  # 可疑拼接在长图中的行号
+    seam_rows = []  # (长图行号, 当前帧编号)
     for i, fp in enumerate(frames[1:], start=1):
         img = np.asarray(Image.open(fp).convert("RGB"))
         if i < len(offsets) and offsets[i]:
@@ -632,7 +708,7 @@ def build(out, opt, on_event=print_event):
         else:  # 没有记录位移（例如手动放入的截图），现场估算
             d, _ = estimate_shift(prev, img, expected=last_d)
         if i in suspicious:
-            seam_rows.append(pag.added)
+            seam_rows.append((pag.added, i))
         if d > H:  # 中间是整屏以上的空白，用上一帧底部的背景色补齐
             pag.add(np.repeat(prev[-1:], d - H, axis=0))
             pag.add(img)
@@ -641,14 +717,16 @@ def build(out, opt, on_event=print_event):
         prev, last_d = img, d
     pages = pag.finish()
     seams = []
-    for r in seam_rows:
+    for r, frame in seam_rows:
         p = pag.page_of(r)
         if p <= len(pages):
-            seams.append({"page": p, "y": int(r - pag.starts[p - 1])})
+            seams.append({"page": p, "y": int(r - pag.starts[p - 1]), "frame": frame,
+                          "resolved": frame in resolved})
+    open_seams = [s for s in seams if not s["resolved"]]
     emit("paged", f"分页完成：{len(pages)} 页 → {pages_dir}", pages=len(pages))
-    if seams:
-        emit("seams", "⚠ 以下页面有可疑拼接，请人工核对是否有重复或缺失的行："
-             + "、".join(f"第 {s['page']} 页" for s in seams), seams=seams)
+    if open_seams:
+        emit("seams", "⚠ 以下页面有需要核对的拼接，请人工确认是否有重复或缺失的行："
+             + "、".join(f"第 {s['page']} 页" for s in open_seams), seams=open_seams)
 
     compact = getattr(opt, "compact", True)
     # 压缩要靠 OCR 判断字的大小、验收清晰度，所以压缩时即使关了"可搜索文字"也要识别，只是不写进 PDF
@@ -672,7 +750,8 @@ def build(out, opt, on_event=print_event):
         emit("info", f"文字版：{txt}")
     emit("info", f"PDF：{pdf}")
     return {"pages": [str(p) for p in pages], "heights": pag.heights, "width": W,
-            "seams": seams, "pdf": str(pdf), "txt": str(txt) if txt else None,
+            "seams": seams, "page_frames": source_map(frames, offsets, pag.heights),
+            "pdf": str(pdf), "txt": str(txt) if txt else None,
             "pdf_mb": round(pdf.stat().st_size / 1024 / 1024, 2), "compress": compress}
 
 
@@ -680,24 +759,112 @@ def restitch(frames, old, emit):
     """用当前算法重算已截帧的位移，以前后帧位移的中位数作预期。整屏以上空白处的位移
     是按滚动量推算的（没有重叠可比），保留原值。"""
     H = Image.open(frames[0]).size[1]
-    normal = [d for d in old[1:] if d and d <= H * 0.88]
     new = [None]
-    prev = np.asarray(Image.open(frames[0]).convert("RGB"))
-    for i, fp in enumerate(frames[1:], start=1):
+    for i in range(1, len(frames)):
         emit("restitch", n=i, total=len(frames) - 1)
-        img = np.asarray(Image.open(fp).convert("RGB"))
         o = old[i] if i < len(old) else None
         if o and o > H * 0.88:
             d = o
         else:
-            near = [x for x in old[max(1, i - 4):i + 5] if x and x <= H * 0.88]
-            exp = float(np.median(near or normal)) if (near or normal) else None
-            d, err = estimate_shift(prev, img, expected=exp)
+            d, err, _ = pair_shift(frames, old, i)
             if o and d != o:
                 emit("info", f"  第 {i + 1} 帧：位移 {o} → {d}（误差 {err:.1f}）")
         new.append(d)
-        prev = img
     return new
+
+
+def assess_replacement(frames, offsets, index, img):
+    """试拍评估：只读。新帧必须与所有存在的相邻帧可靠重叠，才能允许替换。"""
+    if not 0 <= index < len(frames):
+        raise CaptureError("无效的截图编号。")
+    old_img = np.asarray(Image.open(frames[index]).convert("RGB"))
+    img = np.asarray(img)
+    if img.shape != old_img.shape:
+        return {"ok": False, "reasons": ["新截图的尺寸或显示比例与原来不一致，请恢复后再试拍。"],
+                "offsets": {}, "errors": {}, "direction": ""}
+    H = old_img.shape[0]
+    shifts, errors, reasons = {}, {}, []
+
+    def check(neighbor_index, a, b, label):
+        expected = offsets[neighbor_index] if neighbor_index < len(offsets) else None
+        d, err = estimate_shift(a, b, expected=expected)
+        shifts[str(neighbor_index)] = int(d)
+        errors[str(neighbor_index)] = round(float(err), 2)
+        if not 0 < d < H or err > 12.0:
+            reasons.append(f"与{label}重叠不足或画面差异过大（误差 {err:.1f}）。")
+
+    if index > 0:
+        prev = np.asarray(Image.open(frames[index - 1]).convert("RGB"))
+        check(index, prev, img, "前一帧")
+    if index + 1 < len(frames):
+        nxt = np.asarray(Image.open(frames[index + 1]).convert("RGB"))
+        check(index + 1, img, nxt, "后一帧")
+
+    delta, target_err = estimate_shift(old_img, img, allow_negative=True)
+    if target_err > 18.0:
+        direction = "没有识别到目标附近的内容，请根据目标图和定位文字重新查找。"
+    elif delta > 6:
+        direction = "当前画面在目标位置之后，请向上调整后再试拍。"
+    elif delta < -6:
+        direction = "当前画面在目标位置之前，请向下滚动后再试拍。"
+    else:
+        direction = "已接近目标位置。"
+    return {"ok": not reasons, "reasons": reasons, "offsets": shifts, "errors": errors,
+            "direction": direction, "target_error": round(float(target_err), 2)}
+
+
+def replace_frame(out, index, img):
+    """备份并原子替换一帧，同时更新它与前后帧的位移；验证失败时不改任何文件。"""
+    frames = sorted((out / "frames").glob("frame_*.png"))
+    meta_file = out / "offsets.json"
+    meta = json.loads(meta_file.read_text())
+    offsets = meta["offsets"]
+    assessment = assess_replacement(frames, offsets, index, img)
+    if not assessment["ok"]:
+        raise CaptureError("".join(assessment["reasons"]))
+
+    fp = frames[index]
+    backups = out / "backups"
+    backups.mkdir(exist_ok=True)
+    stamp = time.time_ns()
+    backup = backups / f"frame_{index:04d}_{stamp}.png"
+    manifest = backups / f"frame_{index:04d}_{stamp}.json"
+    backup.write_bytes(fp.read_bytes())
+    old_offsets = {k: offsets[int(k)] if int(k) < len(offsets) else None for k in assessment["offsets"]}
+    manifest.write_text(json.dumps({"frame": index, "image": backup.name, "offsets": old_offsets}))
+
+    tmp = frames[index].with_suffix(".tmp.png")
+    Image.fromarray(img).save(tmp)
+    tmp.replace(fp)
+    for k, d in assessment["offsets"].items():
+        i = int(k)
+        while len(offsets) <= i:
+            offsets.append(None)
+        offsets[i] = d
+    meta["offsets"] = offsets
+    meta_file.write_text(json.dumps(meta))
+    return assessment
+
+
+def undo_replacement(out, index):
+    """恢复指定帧最近一次替换前的图片和相邻位移。"""
+    backups = out / "backups"
+    manifests = sorted(backups.glob(f"frame_{index:04d}_*.json"), reverse=True) if backups.exists() else []
+    if not manifests:
+        raise CaptureError("这张截图没有可撤销的替换记录。")
+    manifest = manifests[0]
+    record = json.loads(manifest.read_text())
+    frames = sorted((out / "frames").glob("frame_*.png"))
+    frames[index].write_bytes((backups / record["image"]).read_bytes())
+    meta_file = out / "offsets.json"
+    meta = json.loads(meta_file.read_text())
+    offsets = meta["offsets"]
+    for k, d in record["offsets"].items():
+        offsets[int(k)] = d
+    meta_file.write_text(json.dumps(meta))
+    manifest.unlink()
+    (backups / record["image"]).unlink()
+    return True
 
 
 def cmd_build(args):

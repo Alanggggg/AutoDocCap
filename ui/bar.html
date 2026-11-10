@@ -31,9 +31,12 @@ button:hover{background:#FF453A}
 <script>
 const $ = s => document.querySelector(s);
 let n = 0, sus = 0, lat = null, note = "";
+function formatResponse(seconds) {
+  return seconds >= 0 && seconds < 0.1 ? "<0.1" : seconds.toFixed(1);
+}
 function sub() {
   const parts = [`第 ${n} 帧`];
-  if (lat != null) parts.push(`响应 ${lat.toFixed(1)} 秒`);
+  if (lat != null) parts.push(`响应 ${formatResponse(lat)} 秒`);
   if (sus) parts.push(`<span class="w">可疑 ${sus} 处</span>`);
   $("#sub").innerHTML = parts.join(" · ") + (note ? ` · ${note}` : "");
 }
@@ -56,7 +59,7 @@ window.onEngine = ev => {
     case "calibrated": $("#sub").textContent = `标定完成：每次滚 ${ev.ticks} 格`; break;
     case "frame":
       n = ev.n; sus = ev.n_suspicious; if (ev.latency != null) lat = ev.latency; note = ""; sub(); break;
-    case "lag": note = "远程响应慢，正在等待"; sub(); break;
+    case "lag": note = "画面响应慢，正在等待"; sub(); break;
     case "info":
       if (ev.msg.includes("停止") || ev.msg.includes("末尾")) {
         $("#dot").className = "dot done"; $("#main").textContent = ev.msg.trim();

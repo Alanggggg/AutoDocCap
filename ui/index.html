@@ -156,7 +156,7 @@ button.notice-chip:hover{filter:brightness(.97)}
 .viewer{flex:1;overflow:auto;padding:22px;display:flex;justify-content:center;background:var(--bg)}
 .page-wrap{position:relative;max-width:900px;width:100%;align-self:flex-start;box-shadow:0 2px 16px rgba(0,0,0,.12);background:#fff}
 .page-wrap img{width:100%;display:block}
-.seam{position:absolute;left:0;right:0;height:0;border-top:2px dashed var(--bad)}
+.seam{position:absolute;left:0;right:0;height:0;border-top:2px dashed var(--bad);cursor:pointer}
 .seam span{position:absolute;right:6px;top:-22px;background:var(--bad);color:#fff;font-size:11px;padding:1px 8px;border-radius:4px}
 .rv-foot{display:flex;align-items:center;gap:10px;padding:12px 28px;border-top:1px solid var(--line);background:var(--panel)}
 .rv-foot select{width:auto}
@@ -168,6 +168,34 @@ button.notice-chip:hover{filter:brightness(.97)}
 .help-item+.help-item{margin-top:10px}
 .help-item b{color:var(--accent)}
 .help-item p{margin:4px 0 0;color:var(--muted);line-height:1.65;user-select:text;-webkit-user-select:text}
+.source-dialog{width:min(1180px,calc(100vw - 32px));max-height:92vh;overflow:auto;border:1px solid var(--line);border-radius:14px;padding:22px;background:var(--panel);color:var(--text);box-shadow:0 16px 50px rgba(0,0,0,.25)}
+.source-dialog::backdrop{background:rgba(0,0,0,.35)}
+.source-dialog h3{font-size:17px;margin:0 0 8px;padding-right:44px}
+.dialog-x{position:absolute;top:12px;right:12px;width:36px;height:36px;padding:0;border:0;border-radius:8px;background:var(--panel-2);color:var(--muted);font-size:26px;line-height:34px;cursor:pointer}
+.dialog-x:hover{background:var(--bad-weak);color:var(--bad)}
+.dialog-x:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.source-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:16px}
+.source-dialog.content-mode .source-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.source-dialog.content-mode #source-page{cursor:crosshair}
+.source-frame-list{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;padding:10px;border:1px solid var(--line);border-radius:9px;background:var(--panel-2)}
+.source-frame-list .btn{margin:0;padding:5px 9px;font-size:12px}
+.source-frame-list .btn.on{border-color:var(--accent);background:var(--accent-weak);color:var(--accent)}
+.source-card{min-width:0;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2)}
+.source-card b{font-size:12px;display:block;margin-bottom:8px;word-break:break-all}
+.source-card img{display:block;width:100%;height:350px;object-fit:contain;background:var(--bg);cursor:zoom-in}
+.source-card img:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.source-card .btn{margin-top:8px;width:100%}
+.zoom-dialog{width:calc(100vw - 24px);height:calc(100vh - 24px);max-width:none;max-height:none;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);overflow:hidden}
+.zoom-dialog::backdrop{background:rgba(0,0,0,.65)}
+.zoom-head{height:56px;display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--line)}
+.zoom-head b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.zoom-head .hint{margin:0;min-width:54px;text-align:center}
+.zoom-stage{height:calc(100% - 56px);overflow:auto;text-align:center;background:var(--bg);overscroll-behavior:contain}
+.zoom-stage img{display:inline-block;max-width:none;height:auto;margin:8px;vertical-align:top}
+.source-actions{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:14px}
+.source-preview{margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--panel-2)}
+.source-preview img{display:block;max-width:100%;max-height:420px;margin:8px auto;object-fit:contain}
+#source-status{line-height:1.65;user-select:text;-webkit-user-select:text}
 
 .toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:10px 16px;border-radius:9px;font-size:13px;
   box-shadow:0 6px 24px rgba(0,0,0,.2);max-width:70%;white-space:pre-wrap;opacity:0;pointer-events:none;transition:opacity .2s}
@@ -204,7 +232,7 @@ button.notice-chip:hover{filter:brightness(.97)}
       </div>
 
       <div class="card">
-        <h2><span class="n">3</span>远程网速</h2>
+        <h2><span class="n">3</span>画面响应时间</h2>
         <div class="seg" id="preset">
           <button data-p="fast">流畅</button><button data-p="normal">一般</button><button data-p="slow">卡顿</button><button data-p="custom">自定义</button>
         </div>
@@ -278,6 +306,7 @@ button.notice-chip:hover{filter:brightness(.97)}
   <div class="sum">
     <div class="title" id="r-name"></div>
     <div class="stat" id="r-stats"></div>
+    <button class="btn" id="view-source" style="margin-left:auto">查看来源</button>
   </div>
   <div class="notice-wrap" id="notice-wrap">
     <div class="notice-bar" id="notice-bar"></div>
@@ -309,11 +338,50 @@ button.notice-chip:hover{filter:brightness(.97)}
   <div style="text-align:right;margin-top:16px"><button class="btn primary" id="close-page-help">知道了</button></div>
 </dialog>
 
+<dialog class="source-dialog" id="source-dialog">
+  <button type="button" class="dialog-x" id="source-close-x" aria-label="关闭来源与修复" title="关闭">×</button>
+  <h3>来源与修复</h3>
+  <p class="hint" id="source-meta"></p>
+  <div class="help-item" id="source-anchor-wrap" hidden><b>定位文字</b><p id="source-anchor"></p><p>可在远程文档查看器中搜索这段文字；试拍验证通过前不会修改原图。</p></div>
+  <div class="source-frame-list" id="source-frame-list"></div>
+  <div class="source-grid">
+    <div class="source-card" id="source-prev-card"><b id="source-prev-name">拼接前帧</b><img id="source-prev" alt="拼接前帧，点击放大" title="点击查看原始大图" tabindex="0"><button class="btn" id="source-recapture-prev">试拍替换前帧</button></div>
+    <div class="source-card"><b id="source-current-name">选中原始帧</b><img id="source-current" alt="选中原始帧，点击放大" title="点击查看原始大图" tabindex="0"><button class="btn" id="source-recapture-current">试拍替换此帧</button></div>
+    <div class="source-card"><b id="source-page-name">当前最终页</b><img id="source-page" alt="当前最终页" title="点击问题位置定位原始帧" tabindex="0"><button class="btn" id="source-zoom-page">放大最终页</button></div>
+  </div>
+  <p class="hint" id="source-tip"></p>
+  <div class="source-actions">
+    <button class="btn" id="source-test">局部试修</button>
+    <button class="btn primary" id="source-apply" hidden>应用此拼接并生成</button>
+    <button class="btn" id="source-resolve" hidden>标记已解决</button>
+    <button class="btn" id="source-undo" hidden>撤销最近替换</button>
+  </div>
+  <p class="hint" id="source-status">局部试修只处理这一组原图；如果原图本身模糊或缺内容，请试拍替换。</p>
+  <div class="source-preview" id="source-preview-wrap" hidden><b>预览</b><img id="source-preview" alt="修复或试拍预览"></div>
+  <div class="source-actions">
+    <button class="btn primary" id="source-confirm" hidden>确认替换并生成</button>
+    <button class="btn" id="source-close">关闭</button>
+  </div>
+</dialog>
+
+<dialog class="zoom-dialog" id="zoom-dialog">
+  <div class="zoom-head">
+    <b id="zoom-title">原始大图</b>
+    <button class="btn" id="zoom-out" aria-label="缩小">−</button>
+    <span class="hint" id="zoom-value">100%</span>
+    <button class="btn" id="zoom-in" aria-label="放大">＋</button>
+    <button class="btn" id="zoom-actual">100%</button>
+    <button class="btn" id="zoom-fit">适配窗口</button>
+    <button class="btn primary" id="zoom-close">关闭</button>
+  </div>
+  <div class="zoom-stage" id="zoom-stage"><img id="zoom-image" alt="原始大图"></div>
+</dialog>
+
 <div class="toast" id="toast"></div>
 
 <script>
 const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
-let api, S = {}, PRESETS = {}, perms = {}, result = null, cur = 0;
+let api, S = {}, PRESETS = {}, perms = {}, result = null, cur = 0, source = null;
 const REASON = {end: "已截到文档末尾", moved: "你移动了鼠标，截图提前停止", stopped: "你点击了停止", max: "达到最多帧数上限"};
 
 function toast(msg, bad) {
@@ -456,20 +524,23 @@ window.onDone = r => {
 };
 
 /* ---------- 复核 ---------- */
-/* timing-advice-start：tests/timing_advice_test.py 会直接测试这个纯函数 */
+/* timing-advice-start：tests/timing_advice_test.py 会直接测试这些纯函数 */
+function formatResponse(seconds) {
+  return seconds >= 0 && seconds < 0.1 ? "<0.1" : seconds.toFixed(1);
+}
 function timingAdvice(t, presets, currentPreset) {
   const n = t && Number.isFinite(t.n) ? t.n : 0;
-  if (!t || n < 3) return {kind: "insufficient", short: "网速样本不足", text: `本次只有 ${n} 次有效滚动样本，暂无法可靠判断档位。`};
-  const detail = `响应中位数 ${t.p50.toFixed(1)} 秒，90% 在 ${t.p90.toFixed(1)} 秒内`;
+  if (!t || n < 3) return {kind: "insufficient", short: "响应样本不足", text: `本次只有 ${n} 次有效滚动样本，暂无法可靠判断档位。`};
+  const detail = `响应中位数 ${formatResponse(t.p50)} 秒，90% 在 ${formatResponse(t.p90)} 秒内`;
   const current = presets[currentPreset];
   const currentLabel = current ? `当前「${current.label}」档` : `当前自定义等待 ${t.delay} 秒`;
   if (Math.abs(t.suggest_delay - t.delay) < 0.3)
-    return {kind: "suitable", short: "网速合适", text: `${currentLabel}合适（${detail}）。`};
+    return {kind: "suitable", short: "响应时间合适", text: `${currentLabel}合适（${detail}）。`};
   const hit = Object.entries(presets).find(([, p]) => Math.abs(p.delay - t.suggest_delay) < 0.25);
   const advice = hit ? {label: `「${hit[1].label}」档`, apply: {preset: hit[0], delay: hit[1].delay, lag_wait: hit[1].lag_wait}}
                      : {label: `自定义等待 ${t.suggest_delay} 秒`, apply: {preset: "custom", delay: t.suggest_delay}};
   const issues = [t.late ? `${t.late} 次需要额外等待` : "", t.timeouts ? `${t.timeouts} 次等待超时` : ""].filter(Boolean).join("，");
-  return {kind: "recommend", short: `网速建议：${advice.label}`, text: `${detail}${issues ? `，${issues}` : ""}，建议下次使用 ${advice.label}。`, apply: advice.apply};
+  return {kind: "recommend", short: `响应建议：${advice.label}`, text: `${detail}${issues ? `，${issues}` : ""}，建议下次使用 ${advice.label}。`, apply: advice.apply};
 }
 /* timing-advice-end */
 function closeNotices() {
@@ -488,10 +559,10 @@ function renderReview() {
   $("#r-name").textContent = r.name;
   $("#r-stats").innerHTML = [`<b>${r.pages.length}</b> 页`, `<b>${r.frames}</b> 帧`,
     r.pdf_mb != null ? `PDF <b>${r.pdf_mb}</b> MB` : null,
-    t ? `远程平均响应 <b>${t.mean.toFixed(1)}</b> 秒` : null, REASON[r.reason] || null].filter(Boolean).join(" · ");
+    t ? `画面平均响应 <b>${formatResponse(t.mean)}</b> 秒` : null, REASON[r.reason] || null].filter(Boolean).join(" · ");
   const bs = [];
   const advice = timingAdvice(t, PRESETS, S.preset);
-  bs.push(`<div class="notice-detail info" id="network-detail"><span class="grow">远程网速：${advice.text}</span>` +
+  bs.push(`<div class="notice-detail info" id="network-detail"><span class="grow">画面响应时间：${advice.text}</span>` +
     (advice.apply ? `<button class="btn" id="apply-sg">采用</button>` : "") + `</div>`);
   const c = r.compress;
   let issueCount = 0;
@@ -505,10 +576,11 @@ function renderReview() {
     issueCount++;
     bs.push(`<div class="notice-detail warn"><span class="grow">截图在中途停止，文档可能没有截全。</span></div>`);
   }
-  if (r.seams.length) {
+  const openSeams = r.seams.filter(s => !s.resolved);
+  if (openSeams.length) {
     issueCount++;
-    const pages = [...new Set(r.seams.map(s => s.page))];
-    bs.push(`<div class="notice-detail warn"><span class="grow">有 ${r.seams.length} 处可疑拼接，请核对是否有重复或缺失的行：` +
+    const pages = [...new Set(openSeams.map(s => s.page))];
+    bs.push(`<div class="notice-detail warn"><span class="grow">有 ${openSeams.length} 处可疑拼接，请核对是否有重复或缺失的行：` +
       pages.map(p => `<button class="chip" data-go="${p - 1}">第 ${p} 页</button>`).join("") + `</span></div>`);
   }
   const issueChip = issueCount ? `<button class="notice-chip ${c && c.over ? "bad" : "warn"}" data-open-notices>⚠ ${issueCount} 项需要检查</button>` : "";
@@ -524,16 +596,16 @@ function renderReview() {
     Object.assign(S, advice.apply); renderPreset(); renderAdv(); persist(); toast("已采用，下次截图生效");
     $("#network-chip").textContent = "✓ 已采用，下次生效";
     $("#network-chip").className = "notice-chip ok";
-    $("#network-detail").innerHTML = `<span class="grow">远程网速：已采用建议，下次截图生效。</span>`;
+    $("#network-detail").innerHTML = `<span class="grow">画面响应时间：已采用建议，下次截图生效。</span>`;
     closeNotices();
   };
   $("#r-ratio").value = String(S.page_ratio);
 
-  const seamPages = new Set(r.seams.map(s => s.page - 1));
+  const seamPages = new Set(openSeams.map(s => s.page - 1));
   $("#thumbs").innerHTML = r.pages.map((_, i) =>
     `<div class="thumb" data-i="${i}"><img alt=""><span class="no">${i + 1}</span>${seamPages.has(i) ? '<span class="flag">可疑</span>' : ""}</div>`).join("");
   $$(".thumb").forEach(el => el.onclick = () => openPage(+el.dataset.i));
-  show("review"); openPage(r.seams.length ? r.seams[0].page - 1 : 0);
+  show("review"); openPage(openSeams.length ? openSeams[0].page - 1 : 0);
   loadThumbs();
 }
 async function loadThumbs() {
@@ -553,12 +625,170 @@ async function openPage(i) {
   $("#page-img").src = src || "";
   $$(".seam").forEach(s => s.remove());
   const h = result.heights[i];
-  result.seams.filter(s => s.page - 1 === i).forEach(s => {
+  result.seams.filter(s => s.page - 1 === i && !s.resolved).forEach(s => {
     const d = document.createElement("div"); d.className = "seam"; d.style.top = (s.y / h * 100) + "%";
-    d.innerHTML = "<span>可疑拼接处：请核对上下是否有重复或缺失</span>"; $("#page-wrap").appendChild(d);
+    d.innerHTML = "<span>可疑拼接处：点击查看来源与修复</span>";
+    if (Number.isInteger(s.frame)) d.onclick = () => openSource(s.frame, true);
+    $("#page-wrap").appendChild(d);
   });
   const seam = $(".seam"); if (seam) seam.scrollIntoView({block: "center"}); else $("#viewer").scrollTop = 0;
 }
+
+/* ---------- 来源追溯、局部试修与单帧替换 ---------- */
+let zoomRatio = 1;
+function renderZoom() {
+  const img = $("#zoom-image");
+  if (!img.naturalWidth) return;
+  img.style.width = Math.round(img.naturalWidth * zoomRatio) + "px";
+  $("#zoom-value").textContent = Math.round(zoomRatio * 100) + "%";
+}
+function setZoom(value) {
+  zoomRatio = Math.min(8, Math.max(.1, value));
+  renderZoom();
+}
+function fitZoom() {
+  const img = $("#zoom-image"), stage = $("#zoom-stage");
+  if (!img.naturalWidth) return;
+  setZoom(Math.min(1, (stage.clientWidth - 16) / img.naturalWidth, (stage.clientHeight - 16) / img.naturalHeight));
+  stage.scrollTo({left: 0, top: 0});
+}
+async function openZoom(kind, index, title) {
+  const src = await api.original_image(kind, index);
+  if (!src) return toast("无法加载原始图片。", true);
+  $("#zoom-title").textContent = title;
+  if (!$("#zoom-dialog").open) $("#zoom-dialog").showModal();
+  const img = $("#zoom-image");
+  img.onload = fitZoom;
+  img.src = src;
+  if (img.complete) fitZoom();
+}
+function bindZoom(selector, kind, index, title) {
+  const open = () => source && openZoom(kind, index(), title());
+  $(selector).onclick = open;
+  $(selector).onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } };
+}
+bindZoom("#source-prev", "frame", () => source.frame - 1, () => source.prev_name || "拼接前帧");
+bindZoom("#source-current", "frame", () => source.frame, () => source.current_name);
+$("#source-zoom-page").onclick = () => source && openZoom("page", cur, `第 ${cur + 1} 页最终图`);
+$("#source-page").onkeydown = e => { if (e.key === "Enter") openZoom("page", cur, `第 ${cur + 1} 页最终图`); };
+$("#zoom-in").onclick = () => setZoom(zoomRatio * 1.25);
+$("#zoom-out").onclick = () => setZoom(zoomRatio / 1.25);
+$("#zoom-actual").onclick = () => setZoom(1);
+$("#zoom-fit").onclick = fitZoom;
+$("#zoom-close").onclick = () => $("#zoom-dialog").close();
+
+async function locateSource(e) {
+  if (!source || source.mode !== "content") return;
+  const img = $("#source-page"), rect = img.getBoundingClientRect();
+  if (!img.naturalWidth || !img.naturalHeight) return;
+  const scale = Math.min(rect.width / img.naturalWidth, rect.height / img.naturalHeight);
+  const w = img.naturalWidth * scale, h = img.naturalHeight * scale;
+  const x = e.clientX - rect.left - (rect.width - w) / 2, y = e.clientY - rect.top - (rect.height - h) / 2;
+  if (x < 0 || x >= w || y < 0 || y >= h) return;
+  const hit = await api.source_at(cur, y / h);
+  if (hit.error) return toast(hit.error, true);
+  await openSource(hit.frame, false);
+  $("#source-status").textContent = `已按点击位置选中 ${source.current_name}；请核对原图，需要时再试拍替换此帧。`;
+}
+$("#source-page").onclick = locateSource;
+
+async function openSource(frame = -1, seamMode = false) {
+  const info = await api.source_info(frame, cur);
+  if (info.error) return toast(info.error, true);
+  source = {...info, candidate: null, replacement: null, mode: seamMode ? "seam" : "content"};
+  $("#source-dialog").classList.toggle("content-mode", !seamMode);
+  $("#source-meta").textContent = seamMode
+    ? `第 ${cur + 1} 页 · 拼接前帧 ${info.prev_name || "无"} ↔ 拼接后帧 ${info.current_name}`
+    : `第 ${cur + 1} 页 · 当前选中 ${info.current_name}`;
+  $("#source-prev-card").hidden = !seamMode || !info.prev;
+  $("#source-prev").src = info.prev || "";
+  $("#source-current").src = info.current;
+  $("#source-prev-name").textContent = `拼接前帧：${info.prev_name || "无"}`;
+  $("#source-current-name").textContent = seamMode ? `拼接后帧：${info.current_name}` : `选中：${info.current_name}`;
+  $("#source-page-name").textContent = seamMode ? "当前最终页" : "当前最终页（点击问题位置定位）";
+  $("#source-page").src = await api.page_image(cur, 700);
+  $("#source-frame-list").hidden = seamMode;
+  $("#source-frame-list").innerHTML = info.page_frames.map(f =>
+    `<button class="btn ${f === info.frame ? "on" : ""}" data-frame="${f}" title="frame_${String(f).padStart(4, "0")}.png">帧 ${f + 1}</button>`).join("");
+  $$("#source-frame-list [data-frame]").forEach(b => b.onclick = () => openSource(+b.dataset.frame, false));
+  $("#source-anchor-wrap").hidden = !info.anchor;
+  $("#source-anchor").textContent = info.anchor || "";
+  $("#source-test").hidden = !seamMode || info.frame < 1;
+  $("#source-apply").hidden = true;
+  $("#source-resolve").hidden = !seamMode || !info.has_seam || info.resolved;
+  $("#source-undo").hidden = !info.can_undo;
+  $("#source-confirm").hidden = true;
+  $("#source-preview-wrap").hidden = true;
+  $("#source-preview").src = "";
+  $("#source-tip").textContent = seamMode
+    ? "这里只处理这条拼接缝；点击两张原图可放大核对。"
+    : "点击最终页的不清晰位置，自动选中实际来源帧；也可从上方列表手动切换。";
+  $("#source-status").textContent = seamMode
+    ? "局部试修只处理这一组原图；如果原图本身模糊或缺内容，请试拍替换。"
+    : "当前只显示选中的原始帧。确认它包含问题内容后，再试拍替换此帧。";
+  if (!$("#source-dialog").open) $("#source-dialog").showModal();
+}
+$("#view-source").onclick = () => openSource();
+$("#source-close").onclick = $("#source-close-x").onclick = () => $("#source-dialog").close();
+$("#source-test").onclick = async () => {
+  if (!source) return;
+  $("#source-status").textContent = "正在只计算这一组截图…";
+  const r = await api.preview_seam(source.frame);
+  if (r.error) return $("#source-status").textContent = r.error;
+  source.candidate = r.candidate_offset;
+  $("#source-preview").src = r.preview;
+  $("#source-preview-wrap").hidden = false;
+  $("#source-apply").hidden = false;
+  $("#source-status").textContent = `位移 ${r.current_offset} → ${r.candidate_offset} 像素，匹配误差 ${r.match_error}。请先检查预览，确认后再应用。`;
+};
+$("#source-apply").onclick = async () => {
+  if (!source || source.candidate == null) return;
+  const r = await api.apply_seam(source.frame, source.candidate, +$("#r-ratio").value);
+  if (r.error) return toast(r.error, true);
+  $("#source-dialog").close(); $("#work-title").textContent = "正在应用局部拼接"; show("work");
+};
+$("#source-resolve").onclick = async () => {
+  if (!source) return;
+  const r = await api.mark_resolved(source.frame);
+  if (r.error) return toast(r.error, true);
+  result.seams = r.seams; $("#source-dialog").close(); renderReview();
+};
+async function trialSource(frame) {
+  const r = await api.trial_replace(frame);
+  if (r.error) return toast(r.error, true);
+  $("#source-dialog").close();
+  $("#work-title").textContent = "试拍单张截图";
+  $("#work-sub").textContent = "请切到远程文档并对照目标位置；本次只是试拍，不会覆盖原图。";
+  setBar(null); show("work");
+}
+$("#source-recapture-prev").onclick = () => source && trialSource(source.frame - 1);
+$("#source-recapture-current").onclick = () => source && trialSource(source.frame);
+window.onReplacement = async r => {
+  const pairFrame = source ? source.frame : r.frame;
+  const seamMode = source && source.mode === "seam";
+  show("review");
+  await openSource(pairFrame, seamMode);
+  source.replacement = r;
+  $("#source-preview").src = r.preview || "";
+  $("#source-preview-wrap").hidden = !r.preview;
+  $("#source-confirm").hidden = !r.ok;
+  $("#source-status").textContent = r.ok
+    ? `前后衔接验证通过。${r.direction}请检查试拍预览，确认清晰后再替换。`
+    : (r.reasons || []).join("") + (r.direction || "") + " 原图未被修改。";
+};
+$("#source-confirm").onclick = async () => {
+  if (!source || !source.replacement) return;
+  const r = await api.confirm_replace(source.replacement.frame, +$("#r-ratio").value);
+  if (r.error) return toast(r.error, true);
+  $("#source-dialog").close(); $("#work-title").textContent = "正在应用单帧替换"; show("work");
+};
+$("#source-undo").onclick = async () => {
+  if (!source) return;
+  const r = await api.undo_replace(source.undo_frame, +$("#r-ratio").value);
+  if (r.error) return toast(r.error, true);
+  $("#source-dialog").close(); $("#work-title").textContent = "正在撤销替换"; show("work");
+};
+
 async function rebuild(restitch) {
   const ratio = +$("#r-ratio").value;
   S.page_ratio = ratio;

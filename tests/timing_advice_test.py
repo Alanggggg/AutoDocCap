@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""复核页网速建议的三种状态；只测合成数据，不读取真实截图。"""
+"""复核页响应建议的三种状态；只测合成数据，不读取真实截图。"""
 from pathlib import Path
 import shutil
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 HTML = (ROOT / "ui/index.html").read_text(encoding="utf-8")
-assert "const advice = timingAdvice(t, PRESETS, S.preset);" in HTML, "复核页未接入网速评估"
+assert "const advice = timingAdvice(t, PRESETS, S.preset);" in HTML, "复核页未接入响应评估"
 assert 'advice.apply ? `<button class="btn" id="apply-sg">采用</button>`' in HTML, "仅推荐状态应显示采用按钮"
 
 node = shutil.which("node")
@@ -18,7 +18,7 @@ const fs = require("fs");
 const assert = require("assert");
 const html = fs.readFileSync(process.argv[1], "utf8");
 const match = html.match(/\/\* timing-advice-start[^*]*\*\/([\s\S]*?)\/\* timing-advice-end \*\//);
-assert(match, "找不到网速评估函数");
+assert(match, "找不到响应评估函数");
 eval(match[1]);
 const presets = {
   fast: {label: "流畅", delay: .4, lag_wait: 1.5},
@@ -47,7 +47,13 @@ assert.deepEqual(a.apply, {preset: "custom", delay: .9});
 a = timingAdvice({n: 4, p50: .7, p90: 1, delay: 1, suggest_delay: 1, late: 0, timeouts: 0}, presets, "custom");
 assert.equal(a.kind, "suitable");
 assert.match(a.text, /当前自定义等待 1 秒合适/);
-console.log("网速评估测试通过：无数据、样本不足、当前合适、推荐档位、自定义推荐、自定义合适");
+a = timingAdvice({n: 6, p50: .04, p90: .08, delay: .4, suggest_delay: .3, late: 0, timeouts: 0}, presets, "fast");
+assert.equal(a.kind, "suitable");
+assert.match(a.text, /响应中位数 <0.1 秒，90% 在 <0.1 秒内/);
+a = timingAdvice({n: 6, p50: .1, p90: .12, delay: .4, suggest_delay: .4, late: 0, timeouts: 0}, presets, "fast");
+assert.match(a.text, /响应中位数 0.1 秒，90% 在 0.1 秒内/);
+assert.doesNotMatch(a.text, /<0.1/);
+console.log("响应评估测试通过：无数据、样本不足、当前合适、推荐档位、自定义推荐、自定义合适、快速响应上限显示");
 """
 result = subprocess.run([node, "-e", script, str(ROOT / "ui/index.html")], capture_output=True, text=True, timeout=20)
 print(result.stdout, end="")

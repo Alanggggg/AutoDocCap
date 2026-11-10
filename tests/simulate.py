@@ -80,19 +80,33 @@ def scroll(t):
     if opt.spike and rng.random() < 0.2:  # 20% 的滚动遇到卡顿尖峰
         lag = opt.spike
     state["pending"].append((state["now"] + lag, t))
+    return state["now"]
 
 
 doccap.grab, doccap.scroll = grab, scroll
 doccap.mouse_pos = lambda: park
 doccap.move_mouse = lambda x, y: None
-doccap.time = types.SimpleNamespace(sleep=advance, time=lambda: state["now"])
+doccap.time = types.SimpleNamespace(sleep=advance, time=lambda: state["now"], monotonic=lambda: state["now"])
 
 name = opt.out or ("_sim_noise" if opt.noise else "_sim")
 shutil.rmtree(doccap.OUT_ROOT / name, ignore_errors=True)
 args = argparse.Namespace(name=name, delay=0.6, lag_wait=2.0, step=0.6, countdown=0, max_frames=3000,
                           match_thr=12.0, page_ratio=1.414, no_ocr=True, compact=False)
 out = doccap.OUT_ROOT / name
-doccap.capture(region, out, args)  # 直接调用引擎，不依赖 region.json
+capture_result = doccap.capture(region, out, args)  # 直接调用引擎，不依赖 region.json
+timing = capture_result["timing"]
+print("画面响应统计:", timing)
+assert doccap.format_response(0.04) == "<0.1" and doccap.format_response(0.1) == "0.1"
+if not opt.spike:
+    assert timing["timeouts"] == 0, f"稳定延迟被误判为超时: {timing}"
+    if opt.lag <= args.delay:
+        assert timing["late"] == 0, f"基础等待足够时不应额外等待: {timing}"
+    else:
+        assert timing["late"] > 0, f"超过基础等待时必须触发额外等待: {timing}"
+if opt.lag == 0 and not opt.spike:
+    # 每次截图固定耗时 0.15 秒且画面立即更新：只能记录 0.15 秒上限，不能折半成 0.08。
+    assert 0.14 <= timing["p50"] <= 0.16, f"首次截图已变化的响应上限计算错误: {timing}"
+    print("快速响应上限校验通过")
 doccap.build(out, args)
 print(f"模拟耗时：{state['now'] / 60:.1f} 分钟")
 
